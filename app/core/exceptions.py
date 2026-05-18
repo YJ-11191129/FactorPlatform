@@ -1,0 +1,2 @@
+﻿class FactorPlatformError(Exception):
+    pass

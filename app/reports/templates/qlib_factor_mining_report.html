@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Native qlib Factor Mining Report</title>
+    <style>
+      body { font-family: Arial, sans-serif; margin: 28px; color: #111827; }
+      h1, h2 { margin: 0 0 12px; }
+      section { margin-top: 24px; }
+      table { border-collapse: collapse; width: 100%; font-size: 12px; }
+      th, td { border-bottom: 1px solid #e5e7eb; padding: 8px; text-align: left; }
+      th { background: #f9fafb; }
+      .muted { color: #6b7280; }
+      .grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
+      .metric { border: 1px solid #e5e7eb; padding: 12px; border-radius: 6px; }
+      .metric div:first-child { color: #6b7280; font-size: 12px; }
+      .metric div:last-child { font-size: 18px; font-weight: 700; }
+    </style>
+  </head>
+  <body>
+    <h1>Native qlib Factor Mining Report</h1>
+    <p class="muted">{{ summary.run_id }} · {{ summary.generated_at }}</p>
+
+    <section class="grid">
+      <div class="metric"><div>Status</div><div>{{ summary.status }}</div></div>
+      <div class="metric"><div>Universe</div><div>{{ summary.universe }}</div></div>
+      <div class="metric"><div>Factors</div><div>{{ summary.factor_count }}</div></div>
+      <div class="metric"><div>Observations</div><div>{{ summary.observation_count }}</div></div>
+    </section>
+
+    <section>
+      <h2>Readiness</h2>
+      <p>Provider: <code>{{ summary.provider_uri }}</code></p>
+      <p class="muted">{{ summary.timing_note }}</p>
+    </section>
+
+    <section>
+      <h2>Factor Ranking</h2>
+      <table>
+        <thead>
+          <tr>
+            <th>Rank</th><th>Factor</th><th>Score</th><th>IC</th><th>RankIC</th><th>ICIR</th><th>Long-short</th><th>Coverage</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in ranking %}
+          <tr>
+            <td>{{ row.rank }}</td>
+            <td>{{ row.factor_name }}</td>
+            <td>{{ fmt(row.score) }}</td>
+            <td>{{ fmt(row.ic_mean) }}</td>
+            <td>{{ fmt(row.rank_ic_mean) }}</td>
+            <td>{{ fmt(row.icir) }}</td>
+            <td>{{ pct(row.long_short_mean) }}</td>
+            <td>{{ pct(row.coverage) }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </section>
+
+    <section>
+      <h2>Recent IC Series</h2>
+      <table>
+        <thead><tr><th>Date</th><th>Factor</th><th>IC</th><th>RankIC</th><th>Samples</th></tr></thead>
+        <tbody>
+          {% for row in ic_tail %}
+          <tr><td>{{ row.trade_date }}</td><td>{{ row.factor_name }}</td><td>{{ fmt(row.ic) }}</td><td>{{ fmt(row.rank_ic) }}</td><td>{{ row.sample_count }}</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </section>
+  </body>
+</html>

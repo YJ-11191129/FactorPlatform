@@ -1,0 +1,76 @@
+services:
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_DB: factor_platform
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-factorplatform_dev_password}
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+
+  backend:
+    image: factorplatform-backend:latest
+    build:
+      context: .
+      dockerfile: Dockerfile.backend
+    environment:
+      DATABASE_URL: postgresql+psycopg://postgres:${POSTGRES_PASSWORD:-factorplatform_dev_password}@postgres:5432/factor_platform
+      REDIS_URL: redis://redis:6379/0
+      FACTOR_PLATFORM_REQUIRE_DB: "1"
+      FACTOR_PLATFORM_REQUIRE_AUTH: "1"
+      FACTOR_PLATFORM_API_KEYS: "CHANGE_ME_ADMIN_KEY:admin,CHANGE_ME_VIEW_KEY:viewer"
+      FACTOR_PLATFORM_REAL_OHLCV_PATH: /data/kaggle/wind_data/02_daily_stock/stock_daily_ohlcv.parquet
+    ports:
+      - "8002:8000"
+    volumes:
+      - ./data:/app/data
+      - D:/mcQlib/data:/data/mcqlib:ro
+      - D:/Kaggle/data:/data/kaggle:ro
+    depends_on:
+      - postgres
+      - redis
+
+  worker:
+    image: factorplatform-backend:latest
+    build:
+      context: .
+      dockerfile: Dockerfile.backend
+    command: ["sh","-lc","python scripts/init_db.py && celery -A app.tasks.celery_app.celery_app worker -l info"]
+    environment:
+      DATABASE_URL: postgresql+psycopg://postgres:${POSTGRES_PASSWORD:-factorplatform_dev_password}@postgres:5432/factor_platform
+      REDIS_URL: redis://redis:6379/0
+      FACTOR_PLATFORM_REQUIRE_DB: "1"
+      FACTOR_PLATFORM_REQUIRE_AUTH: "1"
+      FACTOR_PLATFORM_API_KEYS: "CHANGE_ME_ADMIN_KEY:admin,CHANGE_ME_VIEW_KEY:viewer"
+      FACTOR_PLATFORM_REAL_OHLCV_PATH: /data/kaggle/wind_data/02_daily_stock/stock_daily_ohlcv.parquet
+    volumes:
+      - ./data:/app/data
+      - D:/mcQlib/data:/data/mcqlib:ro
+      - D:/Kaggle/data:/data/kaggle:ro
+    depends_on:
+      - postgres
+      - redis
+
+  frontend:
+    image: factorplatform-frontend:latest
+    build:
+      context: .
+      dockerfile: Dockerfile.frontend
+    environment:
+      BACKEND_ORIGIN: http://backend:8000
+      NEXT_PUBLIC_API_KEY: CHANGE_ME_VIEW_KEY
+    ports:
+      - "3000:3000"
+    depends_on:
+      - backend
+
+volumes:
+  pgdata:
+

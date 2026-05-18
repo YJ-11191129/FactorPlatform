@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Single Factor Report - {{ summary.factor_name }} {{ summary.factor_version }}</title>
+    <style>
+      body { font-family: -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,"Noto Sans","PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif; margin: 24px; }
+      h1,h2 { margin: 0 0 12px 0; }
+      .meta { color: #555; margin-bottom: 18px; }
+      table { border-collapse: collapse; width: 100%; margin: 10px 0 18px 0; }
+      th, td { border: 1px solid #ddd; padding: 8px; font-size: 13px; }
+      th { background: #f6f6f6; text-align: left; }
+      code { background: #f6f6f6; padding: 2px 6px; border-radius: 4px; }
+      .grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; }
+      .card { border: 1px solid #eee; border-radius: 8px; padding: 12px; }
+      .k { color: #888; font-size: 12px; }
+      .v { font-size: 16px; font-weight: 600; margin-top: 4px; }
+    </style>
+  </head>
+  <body>
+    <h1>单因子分析报告</h1>
+    <div class="meta">
+      因子：<code>{{ summary.factor_name }}</code> 版本：<code>{{ summary.factor_version }}</code>｜
+      calc_batch_id：<code>{{ summary.calc_batch_id }}</code>｜
+      horizon：<code>{{ summary.horizon }}</code>｜
+      分组：<code>{{ summary.quantiles }}</code>｜
+      取值列：<code>{{ summary.value_col }}</code>
+    </div>
+
+    <div class="grid">
+      <div class="card">
+        <div class="k">IC 均值</div>
+        <div class="v">{{ fmt(summary.ic.mean) }}</div>
+      </div>
+      <div class="card">
+        <div class="k">IC IR(年化)</div>
+        <div class="v">{{ fmt(summary.ic.ir) }}</div>
+      </div>
+      <div class="card">
+        <div class="k">IC 胜率</div>
+        <div class="v">{{ pct(summary.ic.win_rate) }}</div>
+      </div>
+      <div class="card">
+        <div class="k">RankIC 均值</div>
+        <div class="v">{{ fmt(summary.rank_ic.mean) }}</div>
+      </div>
+      <div class="card">
+        <div class="k">RankIC IR(年化)</div>
+        <div class="v">{{ fmt(summary.rank_ic.ir) }}</div>
+      </div>
+      <div class="card">
+        <div class="k">多空(Top-Bottom) 均值</div>
+        <div class="v">{{ fmt(summary.long_short.mean) }}</div>
+      </div>
+    </div>
+
+    <h2>样本覆盖</h2>
+    <table>
+      <tr><th>字段</th><th>值</th></tr>
+      <tr><td>合并后行数</td><td>{{ summary.row_count }}</td></tr>
+      <tr><td>日期数</td><td>{{ summary.date_count }}</td></tr>
+    </table>
+
+    <h2>IC 序列（最近 {{ ic_tail|length }} 天）</h2>
+    <table>
+      <tr><th>date</th><th>ic</th><th>rank_ic</th><th>n</th></tr>
+      {% for r in ic_tail %}
+      <tr>
+        <td>{{ r.date }}</td>
+        <td>{{ fmt(r.ic) }}</td>
+        <td>{{ fmt(r.rank_ic) }}</td>
+        <td>{{ r.n }}</td>
+      </tr>
+      {% endfor %}
+    </table>
+
+    <h2>分组收益（最近 {{ grp_tail|length }} 天）</h2>
+    <table>
+      <tr><th>trade_date</th><th>q</th><th>avg_fwd_ret</th></tr>
+      {% for r in grp_tail %}
+      <tr>
+        <td>{{ r.trade_date }}</td>
+        <td>{{ r.q }}</td>
+        <td>{{ fmt(r.avg_fwd_ret) }}</td>
+      </tr>
+      {% endfor %}
+    </table>
+  </body>
+</html>
+

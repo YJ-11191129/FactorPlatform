@@ -1,0 +1,17 @@
+FROM node:20-alpine
+
+WORKDIR /app
+
+COPY web/package.json /app/package.json
+COPY web/package-lock.json /app/package-lock.json
+RUN npm ci
+
+COPY web /app
+
+ENV NODE_ENV=production
+EXPOSE 3000
+
+RUN npm run build
+
+CMD ["npm","run","start","--","--hostname","0.0.0.0","--port","3000"]
+

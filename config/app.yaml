@@ -1,0 +1,10 @@
+﻿app_name: FactorPlatform
+env: dev
+timezone: Asia/Shanghai
+api:
+  host: 0.0.0.0
+  port: 8000
+database:
+  url: postgresql+psycopg://postgres:postgres@localhost:5432/factor_platform
+redis:
+  url: redis://localhost:6379/0

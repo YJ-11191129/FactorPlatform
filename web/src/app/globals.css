@@ -1,0 +1,181 @@
+* {
+  box-sizing: border-box;
+}
+
+:root {
+  --fp-bg: #07111f;
+  --fp-bg-soft: #0b1830;
+  --fp-surface: #0f1b2e;
+  --fp-surface-muted: #16243a;
+  --fp-surface-glass: rgba(15, 27, 46, 0.82);
+  --fp-border: rgba(203, 213, 225, 0.12);
+  --fp-border-strong: rgba(203, 213, 225, 0.2);
+  --fp-text: #f8fafc;
+  --fp-muted: #a8b4c6;
+  --fp-muted-2: #718096;
+  --fp-accent: #38bdf8;
+  --fp-accent-2: #5eead4;
+  --fp-accent-soft: rgba(56, 189, 248, 0.14);
+  --fp-success: #34d399;
+  --fp-warning: #fbbf24;
+  --fp-risk: #fb7185;
+  --fp-radius: 14px;
+  --fp-radius-lg: 20px;
+  --fp-shadow: 0 18px 45px rgba(2, 8, 23, 0.26);
+}
+
+html,
+body {
+  max-width: 100vw;
+  overflow-x: hidden;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  color: var(--fp-text);
+  background:
+    radial-gradient(circle at 14% -4%, rgba(56, 189, 248, 0.14), transparent 32rem),
+    radial-gradient(circle at 90% 4%, rgba(94, 234, 212, 0.1), transparent 28rem),
+    linear-gradient(180deg, #081524 0%, #0b1830 420px, var(--fp-bg) 100%),
+    var(--fp-bg);
+  font-family:
+    Inter,
+    -apple-system,
+    BlinkMacSystemFont,
+    "Segoe UI",
+    "Microsoft YaHei",
+    sans-serif;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+.ant-btn,
+.ant-input,
+.ant-input-affix-wrapper,
+.ant-select-selector,
+.ant-picker,
+.ant-card,
+.ant-table-wrapper .ant-table {
+  border-radius: var(--fp-radius) !important;
+}
+
+.ant-btn {
+  min-height: 36px;
+  font-weight: 700;
+  box-shadow: none;
+}
+
+.ant-btn-primary {
+  color: #06121f;
+  background: linear-gradient(135deg, var(--fp-accent), var(--fp-accent-2));
+  box-shadow: 0 12px 26px rgba(56, 189, 248, 0.18);
+}
+
+.ant-btn-primary:not(:disabled):hover {
+  color: #06121f !important;
+  background: linear-gradient(135deg, #7dd3fc, #99f6e4) !important;
+}
+
+.ant-btn-default {
+  color: var(--fp-text);
+  border-color: var(--fp-border);
+  background: rgba(15, 27, 46, 0.72);
+}
+
+.ant-btn-default:not(:disabled):hover {
+  color: #e0f2fe !important;
+  border-color: rgba(56, 189, 248, 0.38) !important;
+  background: rgba(56, 189, 248, 0.1) !important;
+}
+
+.ant-table-wrapper .ant-table-thead > tr > th {
+  color: var(--fp-muted) !important;
+  font-size: 12px;
+  font-weight: 700;
+  background: #132035 !important;
+  border-bottom-color: var(--fp-border) !important;
+}
+
+.ant-table-wrapper .ant-table,
+.ant-table-wrapper .ant-table-tbody > tr > td {
+  color: var(--fp-text);
+  background: var(--fp-surface) !important;
+  border-bottom-color: var(--fp-border) !important;
+}
+
+.ant-table-wrapper .ant-table-tbody > tr:hover > td {
+  background: rgba(56, 189, 248, 0.07) !important;
+}
+
+.ant-card .ant-card-head {
+  min-height: 46px;
+  border-bottom-color: var(--fp-border);
+  background: linear-gradient(180deg, rgba(22, 36, 58, 0.88), rgba(15, 27, 46, 0.72));
+}
+
+.ant-card .ant-card-head-title {
+  color: var(--fp-text);
+  font-size: 14px;
+  font-weight: 760;
+}
+
+.ant-segmented {
+  padding: 3px;
+  border: 1px solid var(--fp-border);
+  background: rgba(6, 18, 34, 0.66);
+}
+
+.ant-segmented .ant-segmented-item {
+  border-radius: 6px;
+}
+
+.ant-segmented .ant-segmented-item-selected {
+  color: #e0f2fe;
+  font-weight: 700;
+  background: rgba(56, 189, 248, 0.13);
+  box-shadow: inset 0 0 0 1px rgba(56, 189, 248, 0.2);
+}
+
+.ant-alert {
+  border-radius: var(--fp-radius) !important;
+}
+
+.ant-tag {
+  color: rgba(248, 250, 252, 0.9);
+  border-radius: 999px;
+  font-weight: 650;
+  border-color: var(--fp-border);
+  background: rgba(15, 27, 46, 0.72);
+}
+
+.ant-statistic-title {
+  color: var(--fp-muted) !important;
+  font-size: 12px !important;
+  font-weight: 700;
+}
+
+.ant-statistic-content {
+  color: var(--fp-text) !important;
+  font-size: 22px !important;
+  font-weight: 780;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+}
+
+.ant-input,
+.ant-input-affix-wrapper,
+.ant-select-selector,
+.ant-picker,
+.ant-input-number,
+.ant-input-number-input {
+  color: var(--fp-text) !important;
+  border-color: var(--fp-border) !important;
+  background: rgba(6, 18, 34, 0.54) !important;
+}
+
+.ant-input::placeholder {
+  color: var(--fp-muted-2) !important;
+}

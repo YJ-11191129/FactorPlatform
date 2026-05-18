@@ -1,0 +1,39 @@
+data_sources:
+  qlib_cn_daily:
+    type: qlib_bin
+    provider_uri: ${FACTOR_PLATFORM_PROVIDER_URI:-D:\mcQlib\data\qlib_bin\cn_data}
+    calendar: calendars/day.txt
+    instruments: instruments/*.txt
+    features: features/*
+    freshness_days: 5
+  qlib_us_daily:
+    type: qlib_bin
+    provider_uri: ${FACTOR_PLATFORM_US_PROVIDER_URI:-D:\mcQlib\data\qlib_bin\us_data}
+    calendar: calendars/day.txt
+    instruments: instruments/*.txt
+    features: features/*
+    freshness_days: 5
+  wind_stock_daily_ohlcv:
+    type: parquet
+    path: ${FACTOR_PLATFORM_REAL_OHLCV_PATH:-D:\Kaggle\data\wind_data\02_daily_stock\stock_daily_ohlcv.parquet}
+    date_column: date
+    asset_column: wind_code
+    freshness_days: 5
+  wind_daily_basic:
+    type: parquet
+    path: ${FACTOR_PLATFORM_WIND_DATA_ROOT:-D:\Kaggle\data\wind_data}\02_daily_stock\stock_daily_basic.parquet
+    date_column: date
+    asset_column: wind_code
+    freshness_days: 5
+  macro_cross_asset:
+    type: parquet
+    path: ${FACTOR_PLATFORM_WIND_DATA_ROOT:-D:\Kaggle\data\wind_data}\03_market_state\macro_cross_asset_daily.parquet
+    date_column: date
+    asset_column: wind_code
+    freshness_days: 5
+  financial_statement:
+    type: parquet
+    path: ${FACTOR_PLATFORM_FINANCIAL_STATEMENT_PATH:-D:\Kaggle\data\processed\financial_statement.parquet}
+    date_column: report_date
+    asset_column: wind_code
+    freshness_days: 120

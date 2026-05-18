@@ -1,0 +1,814 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>FactorPlatform</title>
+  <style>
+    :root{
+      --bg:#0b1220;
+      --panel:#0f1a2d;
+      --panel2:#0c1628;
+      --text:#e6edf6;
+      --muted:#9bb0c8;
+      --border:rgba(255,255,255,.09);
+      --brand:#7aa2ff;
+      --brand2:#66e3ff;
+      --danger:#ff6b6b;
+      --ok:#2dd4bf;
+      --shadow:0 18px 55px rgba(0,0,0,.45);
+      --radius:14px;
+      --mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+      --sans: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji", "Segoe UI Emoji";
+    }
+    html,body{height:100%}
+    body{
+      margin:0;
+      font-family:var(--sans);
+      color:var(--text);
+      background:
+        radial-gradient(900px 500px at 20% -5%, rgba(122,162,255,.22), transparent 60%),
+        radial-gradient(700px 420px at 85% 0%, rgba(102,227,255,.18), transparent 55%),
+        radial-gradient(900px 600px at 70% 110%, rgba(45,212,191,.12), transparent 60%),
+        var(--bg);
+    }
+    a{color:inherit}
+    .wrap{max-width:1120px;margin:0 auto;padding:26px 18px 46px}
+    .topbar{
+      display:flex;align-items:center;justify-content:space-between;gap:14px;
+      padding:18px 18px;border:1px solid var(--border);border-radius:var(--radius);
+      background:linear-gradient(180deg, rgba(255,255,255,.06), rgba(255,255,255,.03));
+      box-shadow:var(--shadow);
+      backdrop-filter: blur(10px);
+    }
+    .brand{display:flex;align-items:center;gap:12px}
+    .logo{
+      width:38px;height:38px;border-radius:12px;
+      background:linear-gradient(135deg, var(--brand), var(--brand2));
+      box-shadow:0 10px 30px rgba(122,162,255,.25);
+    }
+    .title{display:flex;flex-direction:column;gap:2px}
+    .title h1{margin:0;font-size:18px;letter-spacing:.2px}
+    .title p{margin:0;color:var(--muted);font-size:12px}
+    .links{display:flex;gap:10px;flex-wrap:wrap;justify-content:flex-end}
+    .chip{
+      display:inline-flex;align-items:center;gap:8px;
+      padding:8px 12px;border-radius:999px;border:1px solid var(--border);
+      background:rgba(255,255,255,.04);text-decoration:none;
+      transition:transform .12s ease, background .12s ease, border-color .12s ease;
+      font-size:12px;color:var(--muted)
+    }
+    .chip:hover{transform:translateY(-1px);background:rgba(255,255,255,.06);border-color:rgba(122,162,255,.35);color:var(--text)}
+
+    .grid{margin-top:16px;display:grid;grid-template-columns:420px 1fr;gap:14px}
+    @media (max-width: 980px){.grid{grid-template-columns:1fr}}
+
+    .card{
+      border:1px solid var(--border);
+      border-radius:var(--radius);
+      background:linear-gradient(180deg, rgba(255,255,255,.05), rgba(255,255,255,.03));
+      box-shadow:var(--shadow);
+      overflow:hidden;
+    }
+    .card .hd{
+      padding:14px 14px;border-bottom:1px solid var(--border);
+      display:flex;align-items:center;justify-content:space-between;gap:10px;
+      background:rgba(0,0,0,.12);
+    }
+    .card .hd h2{margin:0;font-size:13px;letter-spacing:.2px}
+    .card .hd .meta{color:var(--muted);font-size:12px}
+    .card .bd{padding:14px}
+
+    .tabs{display:flex;gap:8px;flex-wrap:wrap}
+    .tab{
+      cursor:pointer;
+      border:1px solid var(--border);
+      background:rgba(255,255,255,.04);
+      color:var(--muted);
+      padding:8px 10px;border-radius:10px;
+      font-size:12px;
+      transition:background .12s ease, border-color .12s ease, color .12s ease;
+      user-select:none;
+    }
+    .tab.active{background:rgba(122,162,255,.18);border-color:rgba(122,162,255,.35);color:var(--text)}
+
+    label{display:block;color:var(--muted);font-size:12px;margin:10px 0 6px}
+    input, select, textarea{
+      width:100%;
+      box-sizing:border-box;
+      padding:10px 11px;
+      border-radius:12px;
+      border:1px solid var(--border);
+      background:rgba(0,0,0,.18);
+      color:var(--text);
+      outline:none;
+    }
+    textarea{min-height:94px;font-family:var(--mono);font-size:12px}
+    input::placeholder, textarea::placeholder{color:rgba(155,176,200,.7)}
+    .row{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+    @media (max-width: 980px){.row{grid-template-columns:1fr}}
+
+    .actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:12px}
+    .btn{
+      cursor:pointer;
+      padding:10px 12px;border-radius:12px;
+      border:1px solid var(--border);
+      background:rgba(255,255,255,.04);
+      color:var(--text);
+      transition:transform .12s ease, background .12s ease, border-color .12s ease;
+      font-size:13px;
+    }
+    .btn:hover{transform:translateY(-1px);background:rgba(255,255,255,.06);border-color:rgba(122,162,255,.35)}
+    .btn.primary{background:linear-gradient(135deg, rgba(122,162,255,.35), rgba(102,227,255,.22));border-color:rgba(122,162,255,.35)}
+    .btn.ghost{background:transparent}
+    .pill{
+      display:inline-flex;align-items:center;gap:8px;
+      padding:6px 10px;border-radius:999px;
+      background:rgba(45,212,191,.12);
+      border:1px solid rgba(45,212,191,.22);
+      color:var(--ok);font-size:12px
+    }
+    .pill.bad{background:rgba(255,107,107,.12);border-color:rgba(255,107,107,.22);color:var(--danger)}
+
+    .hint{color:var(--muted);font-size:12px;line-height:1.55}
+    .mono{font-family:var(--mono)}
+
+    .result{display:flex;flex-direction:column;gap:10px}
+    .kvs{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+    @media (max-width: 980px){.kvs{grid-template-columns:1fr}}
+    .kv{
+      padding:10px 12px;border:1px solid var(--border);border-radius:12px;
+      background:rgba(0,0,0,.14)
+    }
+    .kv .k{color:var(--muted);font-size:12px}
+    .kv .v{font-size:13px;margin-top:4px}
+
+    table{width:100%;border-collapse:separate;border-spacing:0}
+    th, td{padding:10px 10px;border-bottom:1px solid rgba(255,255,255,.06);font-size:12px}
+    th{color:var(--muted);text-align:left;font-weight:600;background:rgba(0,0,0,.10);position:sticky;top:0}
+    .table-wrap{max-height:360px;overflow:auto;border:1px solid var(--border);border-radius:12px;background:rgba(0,0,0,.10)}
+    .code{
+      border:1px solid var(--border);border-radius:12px;background:rgba(0,0,0,.18);
+      padding:10px 12px;font-family:var(--mono);font-size:12px;overflow:auto;white-space:pre;
+    }
+    .toast{
+      position:fixed;right:16px;bottom:16px;
+      max-width:min(520px, calc(100% - 32px));
+      border:1px solid var(--border);
+      border-radius:12px;
+      background:rgba(10,16,28,.82);
+      box-shadow:var(--shadow);
+      padding:10px 12px;
+      color:var(--text);
+      display:none;
+    }
+    .toast.show{display:block}
+    .link{
+      color:rgba(122,162,255,.95);
+      text-decoration:none;
+    }
+    .link:hover{text-decoration:underline}
+    .subtle{color:rgba(155,176,200,.85)}
+    .sep{height:1px;background:rgba(255,255,255,.06);margin:12px 0}
+    details{
+      border:1px solid rgba(255,255,255,.08);
+      border-radius:12px;
+      padding:10px 12px;
+      background:rgba(0,0,0,.14);
+    }
+    summary{cursor:pointer;color:var(--muted);font-size:12px;user-select:none}
+    .badge{
+      display:inline-flex;align-items:center;
+      padding:3px 8px;border-radius:999px;
+      border:1px solid rgba(255,255,255,.10);
+      background:rgba(255,255,255,.04);
+      color:var(--muted);
+      font-size:11px
+    }
+    .err{
+      border:1px solid rgba(255,107,107,.28);
+      background:rgba(255,107,107,.08);
+      color:rgba(255,226,226,.92);
+      border-radius:12px;
+      padding:10px 12px;
+      font-size:12px;
+      display:none;
+    }
+    .err.show{display:block}
+    .param-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+    @media (max-width: 980px){.param-grid{grid-template-columns:1fr}}
+    .param{
+      border:1px solid rgba(255,255,255,.08);
+      border-radius:12px;
+      padding:10px 12px;
+      background:rgba(0,0,0,.12);
+    }
+    .param .pname{display:flex;align-items:center;justify-content:space-between;gap:10px}
+    .param .pname strong{font-size:12px}
+    .param .phelp{color:var(--muted);font-size:12px;line-height:1.45;margin-top:6px}
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="topbar">
+      <div class="brand">
+        <div class="logo"></div>
+        <div class="title">
+          <h1>FactorPlatform</h1>
+          <p>后端 MVP：因子注册/列表/运行（支持 qlib_bin 数据接入）</p>
+        </div>
+      </div>
+      <div class="links">
+        <a class="chip" href="/docs" target="_blank" rel="noreferrer">Swagger</a>
+        <a class="chip" href="/redoc" target="_blank" rel="noreferrer">ReDoc</a>
+        <a class="chip" href="/api/factors" target="_blank" rel="noreferrer">/api/factors</a>
+        <a class="chip" href="/health" target="_blank" rel="noreferrer">/health</a>
+      </div>
+    </div>
+
+    <div class="grid">
+      <div class="card">
+        <div class="hd">
+          <h2>快速运行（3 步）</h2>
+          <div class="meta" id="statusText">准备就绪</div>
+        </div>
+        <div class="bd">
+          <div class="hint">
+            <span class="badge">① 选因子</span>
+            <span class="badge" style="margin-left:6px">② 选数据</span>
+            <span class="badge" style="margin-left:6px">③ 点运行</span>
+          </div>
+          <div class="tabs" role="tablist" aria-label="run mode">
+            <div class="tab active" data-tab="demo">Demo（内置）</div>
+            <div class="tab" data-tab="qlib">Qlib Bin（本地）</div>
+          </div>
+
+          <label>选择因子</label>
+          <select id="factorSelect"></select>
+          <div class="hint" id="factorHint"></div>
+          <div class="sep"></div>
+
+          <div class="row" style="align-items:end">
+            <div>
+              <label>参数（推荐：表单）</label>
+              <div class="hint subtle">会根据因子参数 schema 自动生成输入框。</div>
+            </div>
+            <div style="text-align:right">
+              <label style="margin:0">
+                <input id="useJsonCheck" type="checkbox" style="width:auto;vertical-align:middle;margin-right:8px"/>
+                使用高级 JSON 输入
+              </label>
+            </div>
+          </div>
+          <div class="err" id="paramErr"></div>
+          <div id="paramForm" class="param-grid"></div>
+
+          <details id="jsonBox" style="margin-top:10px;display:none">
+            <summary>高级：JSON 参数（粘贴/复制用）</summary>
+            <div style="margin-top:10px">
+              <textarea id="paramsJson" spellcheck="false" placeholder="{&quot;n&quot;: 20}"></textarea>
+            </div>
+          </details>
+
+          <div id="qlibForm" style="display:none">
+            <div class="row">
+              <div>
+                <label>provider_uri</label>
+                <input id="providerUri" value="D:\\mcQlib\\data\\qlib_bin"/>
+              </div>
+              <div>
+                <label>universe</label>
+                <select id="universe">
+                  <option value="csi300" selected>csi300</option>
+                  <option value="csi500">csi500</option>
+                  <option value="csi100">csi100</option>
+                  <option value="all">all</option>
+                </select>
+              </div>
+            </div>
+            <div class="row">
+              <div>
+                <label>start_date（可选）</label>
+                <input id="startDate" placeholder="2020-01-01"/>
+              </div>
+              <div>
+                <label>end_date（可选）</label>
+                <input id="endDate" placeholder="2020-03-31"/>
+              </div>
+            </div>
+            <div class="row">
+              <div>
+                <label>instrument_limit</label>
+                <input id="instrumentLimit" value="50"/>
+              </div>
+              <div>
+                <label>提示</label>
+                <div class="hint">建议先用 3~50 验证流程；确认无误后再逐步放大。</div>
+              </div>
+            </div>
+          </div>
+
+          <div class="actions">
+            <button class="btn primary" id="runBtn">运行</button>
+            <button class="btn" id="refreshBtn">刷新因子列表</button>
+            <button class="btn ghost" id="copyCurlBtn">复制 curl</button>
+          </div>
+
+          <label style="margin-top:12px">
+            <input id="saveCheck" type="checkbox" style="width:auto;vertical-align:middle;margin-right:8px"/>
+            保存结果到 Parquet（按 calc_batch_id 归档，并加入运行历史）
+          </label>
+
+          <div style="margin-top:12px" class="hint">
+            说明：勾选“保存结果”后，会生成 calc_batch_id，并可下载 Parquet；历史记录在右侧列表可回看。
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="hd">
+          <h2>结果预览</h2>
+          <div class="meta">
+            <span class="pill" id="pillMode">mode: demo</span>
+          </div>
+        </div>
+        <div class="bd result">
+          <div class="kvs">
+            <div class="kv">
+              <div class="k">factor_name</div>
+              <div class="v mono" id="kvFactor">-</div>
+            </div>
+            <div class="kv">
+              <div class="k">rows</div>
+              <div class="v" id="kvRows">-</div>
+            </div>
+          </div>
+
+          <div class="kvs">
+            <div class="kv">
+              <div class="k">calc_batch_id</div>
+              <div class="v mono" id="kvBatch">-</div>
+            </div>
+            <div class="kv">
+              <div class="k">download</div>
+              <div class="v" id="kvDownload">-</div>
+            </div>
+          </div>
+
+          <div>
+            <div class="hint">message</div>
+            <div class="code" id="msgBox">-</div>
+          </div>
+
+          <div>
+            <div class="hint">preview（前 200 行）</div>
+            <div class="table-wrap">
+              <table id="previewTable">
+                <thead id="previewHead"></thead>
+                <tbody id="previewBody"></tbody>
+              </table>
+            </div>
+          </div>
+
+          <div>
+            <details>
+              <summary>原始响应（高级）</summary>
+              <div class="code" id="rawBox" style="margin-top:10px">{}</div>
+            </details>
+          </div>
+
+          <div class="card" style="background:rgba(0,0,0,.10);box-shadow:none">
+            <div class="hd" style="background:rgba(0,0,0,.08)">
+              <h2>运行历史</h2>
+              <div class="meta">
+                <button class="btn" id="runsRefreshBtn" style="padding:8px 10px">刷新</button>
+              </div>
+            </div>
+            <div class="bd">
+              <div class="row" style="align-items:end">
+                <div>
+                  <div class="hint">最近 30 次保存记录（只有勾选“保存结果”并运行成功才会产生）。</div>
+                </div>
+                <div style="text-align:right">
+                  <label style="margin:0">
+                    <input id="runsOnlyCurrent" type="checkbox" style="width:auto;vertical-align:middle;margin-right:8px"/>
+                    只看当前因子
+                  </label>
+                </div>
+              </div>
+              <div class="table-wrap" style="margin-top:10px;max-height:280px">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>created_at</th>
+                      <th>factor</th>
+                      <th>mode</th>
+                      <th>rows</th>
+                      <th>download</th>
+                    </tr>
+                  </thead>
+                  <tbody id="runsBody"></tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="toast" id="toast"></div>
+
+  <script>
+    const els = {
+      statusText: document.getElementById('statusText'),
+      factorSelect: document.getElementById('factorSelect'),
+      factorHint: document.getElementById('factorHint'),
+      useJsonCheck: document.getElementById('useJsonCheck'),
+      paramErr: document.getElementById('paramErr'),
+      paramForm: document.getElementById('paramForm'),
+      jsonBox: document.getElementById('jsonBox'),
+      paramsJson: document.getElementById('paramsJson'),
+      qlibForm: document.getElementById('qlibForm'),
+      providerUri: document.getElementById('providerUri'),
+      universe: document.getElementById('universe'),
+      startDate: document.getElementById('startDate'),
+      endDate: document.getElementById('endDate'),
+      instrumentLimit: document.getElementById('instrumentLimit'),
+      runBtn: document.getElementById('runBtn'),
+      refreshBtn: document.getElementById('refreshBtn'),
+      copyCurlBtn: document.getElementById('copyCurlBtn'),
+      saveCheck: document.getElementById('saveCheck'),
+      pillMode: document.getElementById('pillMode'),
+      kvFactor: document.getElementById('kvFactor'),
+      kvRows: document.getElementById('kvRows'),
+      kvBatch: document.getElementById('kvBatch'),
+      kvDownload: document.getElementById('kvDownload'),
+      msgBox: document.getElementById('msgBox'),
+      rawBox: document.getElementById('rawBox'),
+      previewHead: document.getElementById('previewHead'),
+      previewBody: document.getElementById('previewBody'),
+      runsRefreshBtn: document.getElementById('runsRefreshBtn'),
+      runsOnlyCurrent: document.getElementById('runsOnlyCurrent'),
+      runsBody: document.getElementById('runsBody'),
+      toast: document.getElementById('toast')
+    };
+
+    let mode = 'demo';
+    let factorInfos = [];
+
+    function toast(msg, kind='ok') {
+      els.toast.textContent = msg;
+      els.toast.classList.add('show');
+      els.toast.style.borderColor = kind === 'bad' ? 'rgba(255,107,107,.35)' : 'rgba(45,212,191,.30)';
+      els.toast.style.color = kind === 'bad' ? 'var(--danger)' : 'var(--text)';
+      setTimeout(() => els.toast.classList.remove('show'), 2400);
+    }
+
+    function setStatus(text, kind='ok') {
+      els.statusText.textContent = text;
+      els.statusText.style.color = kind === 'bad' ? 'var(--danger)' : 'var(--muted)';
+    }
+
+    function setMode(next) {
+      mode = next;
+      document.querySelectorAll('.tab').forEach(t => {
+        t.classList.toggle('active', t.dataset.tab === next);
+      });
+      els.qlibForm.style.display = next === 'qlib' ? 'block' : 'none';
+      els.pillMode.textContent = 'mode: ' + next;
+      els.pillMode.classList.toggle('bad', false);
+    }
+
+    function safeParseJson(text) {
+      const t = (text || '').trim();
+      if (!t) return {};
+      return JSON.parse(t);
+    }
+
+    function setParamError(msg) {
+      if (!msg) {
+        els.paramErr.classList.remove('show');
+        els.paramErr.textContent = '';
+        return;
+      }
+      els.paramErr.textContent = msg;
+      els.paramErr.classList.add('show');
+    }
+
+    function setFactorHint(fi) {
+      if (!fi) {
+        els.factorHint.textContent = '';
+        return;
+      }
+      const parts = [];
+      if (fi.display_name) parts.push(fi.display_name);
+      if (fi.category) parts.push('· 类别：' + fi.category);
+      if (fi.version) parts.push('· 版本：' + fi.version);
+      if (fi.description) parts.push('\\n' + fi.description);
+      els.factorHint.textContent = parts.join(' ');
+    }
+
+    function createParamRow(name, spec) {
+      const box = document.createElement('div');
+      box.className = 'param';
+
+      const top = document.createElement('div');
+      top.className = 'pname';
+      const strong = document.createElement('strong');
+      strong.textContent = name;
+      const badge = document.createElement('span');
+      badge.className = 'badge';
+      badge.textContent = (spec && spec.type) ? String(spec.type) : 'any';
+      top.appendChild(strong);
+      top.appendChild(badge);
+      box.appendChild(top);
+
+      const input = document.createElement('input');
+      input.dataset.param = name;
+      const t = (spec && spec.type) ? String(spec.type) : 'string';
+      if (t === 'int' || t === 'float' || t === 'number') {
+        input.type = 'number';
+        if (spec && spec.min !== undefined) input.min = String(spec.min);
+        if (spec && spec.max !== undefined) input.max = String(spec.max);
+        input.step = (t === 'int') ? '1' : 'any';
+      } else {
+        input.type = 'text';
+      }
+      if (spec && spec.default !== undefined) input.value = String(spec.default);
+      box.appendChild(document.createElement('div')).appendChild(input);
+
+      const help = document.createElement('div');
+      help.className = 'phelp';
+      const hints = [];
+      if (spec && spec.default !== undefined) hints.push('默认：' + spec.default);
+      if (spec && (spec.min !== undefined || spec.max !== undefined)) hints.push('范围：' + (spec.min ?? '-') + ' ~ ' + (spec.max ?? '-'));
+      help.textContent = hints.join(' · ');
+      box.appendChild(help);
+
+      return box;
+    }
+
+    function buildParamsFromForm(fi) {
+      const schema = (fi && fi.parameter_schema) ? fi.parameter_schema : {};
+      const out = {};
+      const inputs = els.paramForm.querySelectorAll('input[data-param]');
+      for (const inp of inputs) {
+        const k = inp.dataset.param;
+        const spec = schema[k] || {};
+        const t = spec.type || 'string';
+        const raw = (inp.value || '').trim();
+        if (raw === '') continue;
+        if (t === 'int') out[k] = parseInt(raw, 10);
+        else if (t === 'float' || t === 'number') out[k] = parseFloat(raw);
+        else if (t === 'bool') out[k] = (raw === 'true' || raw === '1');
+        else out[k] = raw;
+      }
+      return out;
+    }
+
+    function renderParamForm(fi) {
+      els.paramForm.innerHTML = '';
+      const schema = (fi && fi.parameter_schema) ? fi.parameter_schema : {};
+      const keys = Object.keys(schema);
+      if (keys.length === 0) {
+        const p = document.createElement('div');
+        p.className = 'hint';
+        p.textContent = '该因子暂无参数（可直接运行）。';
+        els.paramForm.appendChild(p);
+        els.paramsJson.value = '{}';
+        return;
+      }
+      for (const k of keys) {
+        els.paramForm.appendChild(createParamRow(k, schema[k]));
+      }
+      const obj = {};
+      for (const [k, v] of Object.entries(schema)) {
+        if (v && Object.prototype.hasOwnProperty.call(v, 'default')) obj[k] = v.default;
+      }
+      els.paramsJson.value = JSON.stringify(obj, null, 2);
+
+      els.paramForm.querySelectorAll('input[data-param]').forEach(inp => {
+        inp.addEventListener('input', () => {
+          try {
+            const params = buildParamsFromForm(fi);
+            els.paramsJson.value = JSON.stringify(params, null, 2);
+            setParamError('');
+          } catch (e) {
+            setParamError(String(e.message || e));
+          }
+        });
+      });
+    }
+
+    async function loadFactors() {
+      setStatus('加载因子列表中…');
+      const res = await fetch('/api/factors');
+      if (!res.ok) throw new Error('load factors failed: ' + res.status);
+      factorInfos = await res.json();
+      els.factorSelect.innerHTML = '';
+      for (const fi of factorInfos) {
+        const opt = document.createElement('option');
+        opt.value = fi.factor_name;
+        opt.textContent = fi.factor_name;
+        els.factorSelect.appendChild(opt);
+      }
+      const first = factorInfos[0] || null;
+      setFactorHint(first);
+      if (first) renderParamForm(first);
+      setStatus('准备就绪');
+      toast('因子列表已刷新');
+    }
+
+    function renderResult(payload) {
+      els.rawBox.textContent = JSON.stringify(payload, null, 2);
+      els.kvFactor.textContent = payload.factor_name || '-';
+      els.kvRows.textContent = (payload.row_count ?? '-') + '';
+      els.msgBox.textContent = payload.message || '-';
+      els.kvBatch.textContent = payload.calc_batch_id || '-';
+
+      if (payload.download_url) {
+        const a = document.createElement('a');
+        a.href = payload.download_url;
+        a.className = 'link';
+        a.textContent = '下载 Parquet';
+        a.target = '_blank';
+        a.rel = 'noreferrer';
+        els.kvDownload.innerHTML = '';
+        els.kvDownload.appendChild(a);
+      } else {
+        els.kvDownload.textContent = '-';
+      }
+
+      const cols = payload.columns || [];
+      const rows = payload.preview || [];
+      els.previewHead.innerHTML = '';
+      els.previewBody.innerHTML = '';
+
+      const trh = document.createElement('tr');
+      for (const c of cols) {
+        const th = document.createElement('th');
+        th.textContent = c;
+        trh.appendChild(th);
+      }
+      els.previewHead.appendChild(trh);
+
+      for (const r of rows) {
+        const tr = document.createElement('tr');
+        for (const c of cols) {
+          const td = document.createElement('td');
+          const v = r[c];
+          td.textContent = v === null || v === undefined ? '' : (typeof v === 'number' ? (Math.abs(v) >= 1e6 ? v.toExponential(6) : v.toFixed(6)) : String(v));
+          tr.appendChild(td);
+        }
+        els.previewBody.appendChild(tr);
+      }
+    }
+
+    function buildPayload() {
+      const factor_name = els.factorSelect.value;
+      const fi = factorInfos.find(x => x.factor_name === factor_name);
+      const save = !!els.saveCheck.checked;
+      let params = {};
+      if (els.useJsonCheck.checked) {
+        params = safeParseJson(els.paramsJson.value);
+      } else {
+        params = buildParamsFromForm(fi);
+      }
+      if (mode === 'demo') return { factor_name, params, save };
+      const provider_uri = els.providerUri.value;
+      const universe = els.universe.value;
+      const start_date = els.startDate.value.trim() || null;
+      const end_date = els.endDate.value.trim() || null;
+      const instrument_limit = parseInt(els.instrumentLimit.value || '50', 10) || 50;
+      return { factor_name, params, provider_uri, universe, start_date, end_date, instrument_limit, save };
+    }
+
+    function buildCurl(payload) {
+      const base = window.location.origin;
+      const url = mode === 'demo' ? base + '/api/factors/run-demo' : base + '/api/factors/run-qlib';
+      const body = JSON.stringify(payload);
+      return 'curl -X POST \\\\\\n  -H \"Content-Type: application/json\" \\\\\\n  -d ' + JSON.stringify(body) + ' \\\\\\n  ' + url;
+    }
+
+    async function run() {
+      let payload;
+      try {
+        payload = buildPayload();
+        setParamError('');
+      } catch (e) {
+        setStatus('参数 JSON 解析失败', 'bad');
+        setParamError('参数解析失败：' + (e.message || e));
+        toast('参数解析失败：' + e.message, 'bad');
+        return;
+      }
+
+      const endpoint = mode === 'demo' ? '/api/factors/run-demo' : '/api/factors/run-qlib';
+      setStatus('运行中…');
+      els.runBtn.disabled = true;
+
+      try {
+        const res = await fetch(endpoint, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          els.pillMode.classList.add('bad');
+          throw new Error((data && data.detail) ? String(data.detail) : 'HTTP ' + res.status);
+        }
+        els.pillMode.classList.toggle('bad', false);
+        renderResult(data);
+        setStatus('运行完成');
+        toast('运行完成');
+        if (data && data.calc_batch_id) {
+          loadRuns().catch(() => {});
+        }
+      } catch (e) {
+        setStatus('运行失败', 'bad');
+        toast('运行失败：' + e.message, 'bad');
+      } finally {
+        els.runBtn.disabled = false;
+      }
+    }
+
+    function runRow(r) {
+      const tr = document.createElement('tr');
+
+      const td1 = document.createElement('td');
+      td1.textContent = r.created_at || '';
+      tr.appendChild(td1);
+
+      const td2 = document.createElement('td');
+      td2.textContent = r.factor_name || '';
+      tr.appendChild(td2);
+
+      const td3 = document.createElement('td');
+      td3.textContent = r.mode || '';
+      tr.appendChild(td3);
+
+      const td4 = document.createElement('td');
+      td4.textContent = (r.row_count ?? '') + '';
+      tr.appendChild(td4);
+
+      const td5 = document.createElement('td');
+      if (r.calc_batch_id) {
+        const a = document.createElement('a');
+        a.href = '/api/runs/' + r.calc_batch_id + '/download';
+        a.className = 'link';
+        a.textContent = 'download';
+        a.target = '_blank';
+        a.rel = 'noreferrer';
+        td5.appendChild(a);
+      }
+      tr.appendChild(td5);
+
+      return tr;
+    }
+
+    async function loadRuns() {
+      const res = await fetch('/api/runs?limit=30');
+      if (!res.ok) return;
+      const rows = await res.json().catch(() => []);
+      els.runsBody.innerHTML = '';
+      const cur = els.factorSelect.value;
+      for (const r of rows) {
+        if (els.runsOnlyCurrent.checked && cur && r.factor_name !== cur) continue;
+        els.runsBody.appendChild(runRow(r));
+      }
+    }
+
+    document.querySelectorAll('.tab').forEach(t => {
+      t.addEventListener('click', () => setMode(t.dataset.tab));
+    });
+    els.refreshBtn.addEventListener('click', () => loadFactors().catch(e => { setStatus('加载失败', 'bad'); toast(e.message, 'bad'); }));
+    els.runBtn.addEventListener('click', () => run());
+    els.runsRefreshBtn.addEventListener('click', () => loadRuns().catch(() => {}));
+    els.runsOnlyCurrent.addEventListener('change', () => loadRuns().catch(() => {}));
+    els.factorSelect.addEventListener('change', () => {
+      const fi = factorInfos.find(x => x.factor_name === els.factorSelect.value);
+      setFactorHint(fi);
+      renderParamForm(fi);
+    });
+    els.useJsonCheck.addEventListener('change', () => {
+      const on = !!els.useJsonCheck.checked;
+      els.jsonBox.style.display = on ? 'block' : 'none';
+    });
+    els.copyCurlBtn.addEventListener('click', async () => {
+      let payload;
+      try { payload = buildPayload(); } catch { toast('参数 JSON 解析失败', 'bad'); return; }
+      const txt = buildCurl(payload);
+      try {
+        await navigator.clipboard.writeText(txt);
+        toast('curl 已复制');
+      } catch {
+        toast('复制失败，请手动复制 raw response', 'bad');
+      }
+    });
+
+    loadFactors().catch(e => { setStatus('加载失败', 'bad'); toast(e.message, 'bad'); });
+    loadRuns().catch(() => {});
+  </script>
+</body>
+</html>

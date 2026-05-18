@@ -1,0 +1,12 @@
+.venv/
+__pycache__/
+**/__pycache__/
+
+logs/
+data/
+
+web/node_modules/
+web/.next/
+
+.trae/
+

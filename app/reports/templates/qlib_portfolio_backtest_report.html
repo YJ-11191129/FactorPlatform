@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Native qlib Portfolio Backtest Report</title>
+    <style>
+      body { font-family: Arial, sans-serif; margin: 28px; color: #111827; }
+      h1, h2 { margin: 0 0 12px; }
+      section { margin-top: 24px; }
+      table { border-collapse: collapse; width: 100%; font-size: 12px; }
+      th, td { border-bottom: 1px solid #e5e7eb; padding: 8px; text-align: left; }
+      th { background: #f9fafb; }
+      .muted { color: #6b7280; }
+      .grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
+      .metric { border: 1px solid #e5e7eb; padding: 12px; border-radius: 6px; }
+      .metric div:first-child { color: #6b7280; font-size: 12px; }
+      .metric div:last-child { font-size: 18px; font-weight: 700; }
+    </style>
+  </head>
+  <body>
+    <h1>Native qlib Portfolio Backtest Report</h1>
+    <p class="muted">{{ portfolio.portfolio_id }} · {{ portfolio.created_at }}</p>
+
+    <section class="grid">
+      <div class="metric"><div>Universe</div><div>{{ portfolio.universe or "-" }}</div></div>
+      <div class="metric"><div>Factors</div><div>{{ portfolio.selected_factors|length }}</div></div>
+      <div class="metric"><div>Signals</div><div>{{ portfolio.signal_count }}</div></div>
+      <div class="metric"><div>Backtest</div><div>{{ backtest.backtest_id if backtest else "-" }}</div></div>
+    </section>
+
+    <section>
+      <h2>Portfolio Weights</h2>
+      <table>
+        <thead><tr><th>Factor</th><th>Weight</th></tr></thead>
+        <tbody>
+          {% for factor, weight in portfolio.weights.items() %}
+          <tr><td>{{ factor }}</td><td>{{ pct(weight) }}</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      <p class="muted">{{ portfolio.timing_note }}</p>
+    </section>
+
+    {% if backtest %}
+    <section>
+      <h2>Backtest Metrics</h2>
+      <table>
+        <thead><tr><th>Metric</th><th>Value</th></tr></thead>
+        <tbody>
+          {% for key, value in backtest.metrics.items() %}
+          <tr><td>{{ key }}</td><td>{{ fmt(value) }}</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </section>
+    {% endif %}
+  </body>
+</html>
