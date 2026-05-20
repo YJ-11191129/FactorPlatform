@@ -421,7 +421,6 @@ def _simulate_positions(
     if metadata:
         summary.update(dict(metadata))
     summary_path = bt_dir / "summary.json"
-    summary["summary_path"] = str(summary_path)
     summary_path.write_text(json.dumps(summary, ensure_ascii=False, indent=2), encoding="utf-8")
 
     artifact = BacktestArtifact(
@@ -433,12 +432,6 @@ def _simulate_positions(
         positions_path=str(positions_path),
         summary_path=str(summary_path),
     )
-    try:
-        from app.services.research_ops_registry import register_backtest_artifact
-
-        register_backtest_artifact(summary)
-    except Exception:
-        pass
     return artifact, summary
 
 

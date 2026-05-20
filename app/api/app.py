@@ -12,8 +12,8 @@ from app.api.routers.news import router as news_router
 from app.api.routers.openbb import router as openbb_router
 from app.api.routers.qlib_research import router as qlib_research_router
 from app.api.routers.reports import router as reports_router
-from app.api.routers.research_quality import router as research_quality_router
 from app.api.routers.research_ops import router as research_ops_router
+from app.api.routers.research_quality import router as research_quality_router
 from app.api.routers.root import router as root_router
 from app.api.routers.runs import router as runs_router
 from app.api.routers.signal_center import router as signal_center_router

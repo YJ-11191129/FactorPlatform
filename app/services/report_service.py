@@ -102,20 +102,13 @@ def generate_single_factor_report(analysis_id: str, enable_pdf: bool = False) ->
     except Exception:
         pass
 
-    result = {
+    return {
         "report_id": report_id,
         "analysis_id": analysis_id,
         "html_path": str(html_path),
         "pdf_path": (str(pdf_path) if pdf_path else None),
         "meta": meta,
     }
-    try:
-        from app.services.research_ops_registry import register_report_artifact
-
-        register_report_artifact(result, report_type="single_factor")
-    except Exception:
-        pass
-    return result
 
 
 def _write_optional_pdf(html: str, artifact_dir: Path, enable_pdf: bool, meta: dict[str, Any]) -> Path | None:
@@ -180,20 +173,13 @@ def generate_qlib_factor_mining_report(run_id: str, enable_pdf: bool = False) ->
     meta = {"run_id": run_id, "report_type": "qlib_factor_mining", "data_source": "qlib_factor_mining_artifacts"}
     pdf_path = _write_optional_pdf(html, artifact_dir, enable_pdf=enable_pdf, meta=meta)
     _persist_report_record(report_id, "qlib_factor_mining", run_id, meta, html_path, pdf_path)
-    result = {
+    return {
         "report_id": report_id,
         "analysis_id": run_id,
         "html_path": str(html_path),
         "pdf_path": (str(pdf_path) if pdf_path else None),
         "meta": meta,
     }
-    try:
-        from app.services.research_ops_registry import register_report_artifact
-
-        register_report_artifact(result, report_type="qlib_factor_mining")
-    except Exception:
-        pass
-    return result
 
 
 def generate_qlib_portfolio_backtest_report(
@@ -232,17 +218,10 @@ def generate_qlib_portfolio_backtest_report(
     }
     pdf_path = _write_optional_pdf(html, artifact_dir, enable_pdf=enable_pdf, meta=meta)
     _persist_report_record(report_id, "qlib_portfolio_backtest", portfolio_id, meta, html_path, pdf_path)
-    result = {
+    return {
         "report_id": report_id,
         "analysis_id": portfolio_id,
         "html_path": str(html_path),
         "pdf_path": (str(pdf_path) if pdf_path else None),
         "meta": meta,
     }
-    try:
-        from app.services.research_ops_registry import register_report_artifact
-
-        register_report_artifact(result, report_type="qlib_portfolio_backtest")
-    except Exception:
-        pass
-    return result

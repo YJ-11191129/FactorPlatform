@@ -27,15 +27,6 @@ export type MacroContext = {
     related_assets?: Array<{ asset_name: string; wind_code: string }>;
   };
   signals?: Record<string, MacroSeriesSummary>;
-  openbb_evidence?: {
-    status?: string;
-    package_version?: string | null;
-    available?: Record<string, boolean>;
-    items?: Array<Record<string, unknown>>;
-    calendar?: Array<Record<string, unknown>>;
-    warnings?: unknown[];
-    artifacts?: string[];
-  };
   notes?: string[];
 };
 

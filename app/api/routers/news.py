@@ -1,13 +1,16 @@
 from __future__ import annotations
 
+import logging
+
 from fastapi import APIRouter, Depends, HTTPException, Query
 
 from app.api.dependencies.auth import Actor, require_role
-from app.services.openbb_information_service import OpenBBError
 from app.services.news_aggregation_service import NewsQuery, search_news, summarize_news
+from app.services.openbb_information_service import OpenBBError
 
 
 router = APIRouter(prefix="/api/v1/news", tags=["news"])
+logger = logging.getLogger("factor_platform.news")
 
 
 @router.get("/search")
@@ -42,7 +45,8 @@ def search(
     except OpenBBError as e:
         raise HTTPException(status_code=503, detail={"status": e.status, "message": e.message, "readiness": e.readiness})
     except Exception as e:
-        raise HTTPException(status_code=503, detail=str(e))
+        logger.exception("news search failed")
+        raise HTTPException(status_code=503, detail={"message": "news service unavailable"})
 
 
 @router.get("/summary")
@@ -90,4 +94,5 @@ def summary(
     except OpenBBError as e:
         raise HTTPException(status_code=503, detail={"status": e.status, "message": e.message, "readiness": e.readiness})
     except Exception as e:
-        raise HTTPException(status_code=503, detail=str(e))
+        logger.exception("news summary failed")
+        raise HTTPException(status_code=503, detail={"message": "news service unavailable"})

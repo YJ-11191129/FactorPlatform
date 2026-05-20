@@ -3,9 +3,6 @@ export type NewsItem = {
   link: string;
   published_at?: string;
   source?: string;
-  provider?: string | null;
-  openbb_endpoint?: string | null;
-  extra?: Record<string, unknown>;
 };
 
 export type NewsSearchResponse = {
@@ -16,11 +13,6 @@ export type NewsSearchResponse = {
   items: NewsItem[];
   count: number;
   latency_ms: number;
-  endpoint?: string | null;
-  provider?: string | null;
-  warnings?: unknown[];
-  artifact_path?: string | null;
-  research_ops_object_id?: string | null;
 };
 
 export type NewsSummary = {
@@ -34,10 +26,4 @@ export type NewsSummaryResponse = {
   count: number;
   summary: NewsSummary;
   items: NewsItem[];
-  source?: string;
-  endpoint?: string | null;
-  provider?: string | null;
-  warnings?: unknown[];
-  artifact_path?: string | null;
-  research_ops_object_id?: string | null;
 };

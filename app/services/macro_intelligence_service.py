@@ -159,7 +159,6 @@ def collect_holistic_context(inputs: MacroInputs, lookback_days: int = 120) -> d
         },
         "topic_registry": topic_meta,
         "signals": {},
-        "openbb_evidence": _collect_openbb_evidence(inputs),
         "notes": [],
     }
 
@@ -193,47 +192,6 @@ def collect_holistic_context(inputs: MacroInputs, lookback_days: int = 120) -> d
             out["signals"][name] = _summarize_time_series(sub, "date", "value")
 
     return out
-
-
-def _collect_openbb_evidence(inputs: MacroInputs) -> dict[str, Any]:
-    try:
-        from app.services.openbb_information_service import OpenBBError, openbb_status, query_economy_calendar, query_world_news
-
-        status = openbb_status()
-        evidence: dict[str, Any] = {
-            "status": status.get("status"),
-            "package_version": status.get("package_version"),
-            "available": status.get("available") or {},
-            "items": [],
-            "calendar": [],
-            "warnings": list(status.get("notes") or []),
-            "artifacts": [],
-        }
-        if status.get("status") != "READY":
-            if status.get("install_hint"):
-                evidence["warnings"].append(status.get("install_hint"))
-            return evidence
-
-        try:
-            news = query_world_news(term=inputs.topic, limit=5)
-            evidence["items"] = news.get("items") or []
-            if news.get("artifact_path"):
-                evidence["artifacts"].append(news.get("artifact_path"))
-            evidence["warnings"].extend(news.get("warnings") or [])
-        except OpenBBError as e:
-            evidence["warnings"].append(e.message)
-
-        try:
-            cal = query_economy_calendar(country=inputs.region, limit=10)
-            evidence["calendar"] = cal.get("items") or []
-            if cal.get("artifact_path"):
-                evidence["artifacts"].append(cal.get("artifact_path"))
-            evidence["warnings"].extend(cal.get("warnings") or [])
-        except OpenBBError as e:
-            evidence["warnings"].append(e.message)
-        return evidence
-    except Exception as e:
-        return {"status": "WARN", "items": [], "calendar": [], "warnings": [f"OpenBB evidence collection failed: {e}"], "artifacts": []}
 
 
 def _openai_chat_json(model: str, system: str, user: str, timeout_s: int = 60) -> dict[str, Any]:

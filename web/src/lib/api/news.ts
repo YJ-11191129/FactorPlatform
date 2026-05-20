@@ -6,12 +6,6 @@ type NewsQuery = {
   limit?: number;
   lang?: string;
   region?: string;
-  source?: "google_news_rss" | "openbb" | string;
-  provider?: string;
-  symbol?: string;
-  start_date?: string;
-  end_date?: string;
-  topics?: string;
 };
 
 function toQuery(params: Record<string, string | number | undefined>): string {
