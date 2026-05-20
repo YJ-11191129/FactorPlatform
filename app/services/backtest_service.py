@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import secrets
 from dataclasses import dataclass
 from datetime import date, datetime
@@ -15,6 +16,7 @@ import pyarrow.compute as pc
 import pyarrow as pa
 
 from app.services.strategy_service import ensure_strategies_loaded
+from app.services.strategy_validator import indicator_alias, validate_strategy_spec
 from app.strategies.registry import get_strategy
 
 
@@ -466,6 +468,177 @@ def run_backtest(
         use_adj=use_adj,
         universe_size=len(ctx.universe()),
     )
+
+
+_AI_RULE_RE = re.compile(r"^\s*([A-Za-z_][A-Za-z0-9_]*)\s*(>=|<=|>|<|==|!=)\s*([A-Za-z_][A-Za-z0-9_]*|-?\d+(?:\.\d+)?)\s*$")
+
+
+def run_strategy_spec_backtest(
+    spec: Mapping[str, Any],
+    start_date: Optional[date] = None,
+    end_date: Optional[date] = None,
+    universe: Optional[list[str]] = None,
+    initial_cash: float = 1_000_000.0,
+    fee_bps: float | None = None,
+    use_adj: bool = True,
+) -> tuple[BacktestArtifact, dict[str, Any]]:
+    from app.api.schemas.strategy_ai import StrategySpec
+
+    strategy_spec = StrategySpec.model_validate(spec)
+    validation = validate_strategy_spec(strategy_spec)
+    if not validation.is_valid:
+        errors = [x.message for x in validation.issues if x.severity == "error"]
+        raise ValueError("invalid AI strategy spec: " + "; ".join(errors))
+    strategy_spec = validation.normalized_spec
+
+    price_universe = universe or strategy_spec.universe or None
+    prices = _load_daily_bar(start_date=start_date, end_date=end_date, universe=price_universe)
+    prices = _filter_prices(prices, start_date=start_date, end_date=end_date, universe=price_universe)
+    if prices.empty:
+        raise ValueError("no price data after filtering")
+
+    positions = _positions_from_strategy_spec(prices, strategy_spec.model_dump())
+    metadata = {
+        "source": "ai_strategy_spec",
+        "strategy_spec": strategy_spec.model_dump(),
+        "validation": validation.model_dump(),
+        "timing_note": "AI StrategySpec signals are formed after close_t; simulation applies positions with a one-bar return delay.",
+    }
+    return _simulate_positions(
+        prices=prices,
+        pos=positions,
+        strategy_id="ai_strategy_spec",
+        strategy_name=strategy_spec.name,
+        params={
+            "entry_rules": strategy_spec.entry_rules,
+            "exit_rules": strategy_spec.exit_rules,
+            "ranking": strategy_spec.ranking,
+            "max_positions": strategy_spec.risk.max_positions,
+        },
+        initial_cash=initial_cash,
+        fee_bps=float(fee_bps if fee_bps is not None else strategy_spec.execution.fee_bps),
+        use_adj=use_adj,
+        universe_size=int(prices["asset_code"].nunique()),
+        id_prefix="ai_bt",
+        metadata=metadata,
+    )
+
+
+def _positions_from_strategy_spec(prices: pd.DataFrame, spec: Mapping[str, Any]) -> pd.DataFrame:
+    px = prices.copy()
+    px = px.sort_values(["asset_code", "trade_date"], kind="mergesort").reset_index(drop=True)
+    px = _add_strategy_spec_indicators(px, spec)
+
+    entry = pd.Series(True, index=px.index)
+    for rule in spec.get("entry_rules") or []:
+        entry = entry & _evaluate_ai_rule(px, str(rule))
+
+    exit_mask = pd.Series(False, index=px.index)
+    for rule in spec.get("exit_rules") or []:
+        exit_mask = exit_mask | _evaluate_ai_rule(px, str(rule))
+
+    eligible = px[entry & ~exit_mask].copy()
+    eligible = eligible.dropna(subset=["trade_date", "asset_code"])
+    if eligible.empty:
+        raise ValueError("AI strategy spec produced no eligible positions")
+
+    ranking = spec.get("ranking")
+    max_positions = int(((spec.get("risk") or {}).get("max_positions")) or 10)
+    max_positions = max(max_positions, 1)
+
+    rows: list[dict[str, Any]] = []
+    for trade_date, day in eligible.groupby("trade_date", sort=True):
+        day = day.copy()
+        if ranking and ranking in day.columns:
+            day[ranking] = pd.to_numeric(day[ranking], errors="coerce")
+            day = day.dropna(subset=[ranking]).sort_values(ranking, ascending=False)
+        else:
+            day = day.sort_values("asset_code")
+        day = day.head(max_positions)
+        if day.empty:
+            continue
+        weight = 1.0 / float(len(day))
+        for asset in day["asset_code"].astype(str).tolist():
+            rows.append({"trade_date": trade_date, "asset_code": asset, "weight": weight})
+
+    if not rows:
+        raise ValueError("AI strategy spec produced no positions after ranking")
+    return pd.DataFrame(rows)
+
+
+def _add_strategy_spec_indicators(px: pd.DataFrame, spec: Mapping[str, Any]) -> pd.DataFrame:
+    out = px.copy()
+    if "volume" not in out.columns:
+        out["volume"] = np.nan
+
+    for indicator in spec.get("indicators") or []:
+        typ = str(indicator.get("type") or "").strip().lower()
+        name = indicator_alias(type("_Indicator", (), indicator)())
+        window = int(indicator.get("window") or 0)
+        field = str(indicator.get("field") or "close").strip().lower()
+        if field not in out.columns:
+            raise ValueError(f"indicator field not available: {field}")
+
+        series = pd.to_numeric(out[field], errors="coerce")
+        grouped = series.groupby(out["asset_code"], sort=False)
+        if typ == "sma":
+            out[name] = grouped.transform(lambda s: s.rolling(window, min_periods=window).mean())
+        elif typ == "ema":
+            out[name] = grouped.transform(lambda s: s.ewm(span=window, adjust=False, min_periods=window).mean())
+        elif typ == "momentum":
+            out[name] = grouped.transform(lambda s: s.pct_change(window))
+        elif typ == "volatility":
+            returns = grouped.transform(lambda s: s.pct_change())
+            out[name] = returns.groupby(out["asset_code"], sort=False).transform(
+                lambda s: s.rolling(window, min_periods=window).std(ddof=0) * np.sqrt(252.0)
+            )
+        elif typ == "atr":
+            prev_close = out.groupby("asset_code", sort=False)["close"].shift(1)
+            high = pd.to_numeric(out["high"], errors="coerce").fillna(out["close"])
+            low = pd.to_numeric(out["low"], errors="coerce").fillna(out["close"])
+            tr = pd.concat([(high - low).abs(), (high - prev_close).abs(), (low - prev_close).abs()], axis=1).max(axis=1)
+            out[name] = tr.groupby(out["asset_code"], sort=False).transform(lambda s: s.rolling(window, min_periods=window).mean())
+        elif typ == "rsi":
+            delta = grouped.transform(lambda s: s.diff())
+            gain = delta.clip(lower=0.0)
+            loss = (-delta.clip(upper=0.0))
+            avg_gain = gain.groupby(out["asset_code"], sort=False).transform(lambda s: s.rolling(window, min_periods=window).mean())
+            avg_loss = loss.groupby(out["asset_code"], sort=False).transform(lambda s: s.rolling(window, min_periods=window).mean())
+            rs = avg_gain / avg_loss.replace(0.0, np.nan)
+            out[name] = 100.0 - (100.0 / (1.0 + rs))
+        else:
+            raise ValueError(f"unsupported indicator type: {typ}")
+
+    return out
+
+
+def _evaluate_ai_rule(px: pd.DataFrame, rule: str) -> pd.Series:
+    match = _AI_RULE_RE.match(rule)
+    if not match:
+        raise ValueError(f"unsupported AI strategy rule: {rule}")
+
+    lhs, op, rhs_token = match.group(1), match.group(2), match.group(3)
+    if lhs not in px.columns:
+        raise ValueError(f"unknown rule field: {lhs}")
+    lhs_s = pd.to_numeric(px[lhs], errors="coerce")
+    if rhs_token in px.columns:
+        rhs: pd.Series | float = pd.to_numeric(px[rhs_token], errors="coerce")
+    else:
+        rhs = float(rhs_token)
+
+    if op == ">":
+        return (lhs_s > rhs).fillna(False)
+    if op == ">=":
+        return (lhs_s >= rhs).fillna(False)
+    if op == "<":
+        return (lhs_s < rhs).fillna(False)
+    if op == "<=":
+        return (lhs_s <= rhs).fillna(False)
+    if op == "==":
+        return (lhs_s == rhs).fillna(False)
+    if op == "!=":
+        return (lhs_s != rhs).fillna(False)
+    raise ValueError(f"unsupported AI strategy rule operator: {op}")
 
 
 def run_portfolio_backtest(

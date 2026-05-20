@@ -345,6 +345,7 @@ function requestTimeoutMs(method: string, pathname: string): number {
   if (m === "GET" || m === "HEAD") return 8000;
   if (pathname.startsWith("/api/backtests/run")) return 120000;
   if (pathname.startsWith("/api/v1/macro/")) return 120000;
+  if (pathname.startsWith("/api/v1/strategy-ai/")) return 120000;
   return 30000;
 }
 

@@ -17,6 +17,7 @@ from app.api.routers.research_quality import router as research_quality_router
 from app.api.routers.root import router as root_router
 from app.api.routers.runs import router as runs_router
 from app.api.routers.signal_center import router as signal_center_router
+from app.api.routers.strategy_ai import router as strategy_ai_router
 from app.api.routers.tasks import router as tasks_router
 from app.api.middleware.audit import audit_middleware
 from app.core.settings import get_settings, validate_runtime_settings
@@ -31,6 +32,7 @@ def create_app() -> FastAPI:
     app.include_router(factors_router)
     app.include_router(runs_router)
     app.include_router(signal_center_router)
+    app.include_router(strategy_ai_router)
     app.include_router(macro_router)
     app.include_router(news_router)
     app.include_router(openbb_router)

@@ -11,6 +11,7 @@ import {
   LineChartOutlined,
   NotificationOutlined,
   RadarChartOutlined,
+  RobotOutlined,
   SettingOutlined,
   ThunderboltOutlined,
 } from "@ant-design/icons";
@@ -36,6 +37,7 @@ const sidebarCopy = {
     marketDashboard: "\u884c\u60c5\u9762\u677f",
     dataMaintenance: "\u6570\u636e\u7ef4\u62a4",
     strategyRouter: "\u7b56\u7565\u8def\u7531",
+    aiStrategy: "AI \u7b56\u7565\u751f\u6210",
     backtests: "\u56de\u6d4b\u5de5\u4f5c\u53f0",
     shockLibrary: "\u51b2\u51fb\u5e93\uff08\u5f85\u63a5\u5165\uff09",
     notifications: "\u901a\u77e5\u4e2d\u5fc3\uff08\u5f85\u63a5\u5165\uff09",
@@ -53,6 +55,7 @@ const sidebarCopy = {
     marketDashboard: "Market Dashboard",
     dataMaintenance: "Data Maintenance",
     strategyRouter: "Strategy Router",
+    aiStrategy: "AI Strategy Builder",
     backtests: "Backtest Lab",
     shockLibrary: "Shock Library (Soon)",
     notifications: "Notifications (Soon)",
@@ -74,6 +77,7 @@ export function AppSidebar(props: { pathname: string }) {
       { key: "/tradingview", icon: <BarChartOutlined />, label: <Link href="/tradingview">{copy.marketDashboard}</Link> },
       { key: "/data-maintenance", icon: <DatabaseOutlined />, label: <Link href="/data-maintenance">{copy.dataMaintenance}</Link> },
       { key: "/strategy-router", icon: <DeploymentUnitOutlined />, label: <Link href="/strategy-router">{copy.strategyRouter}</Link> },
+      { key: "/ai-strategy-builder", icon: <RobotOutlined />, label: <Link href="/ai-strategy-builder">{copy.aiStrategy}</Link> },
       { key: "/strategies", icon: <LineChartOutlined />, label: <Link href="/strategies">{copy.backtests}</Link> },
       { key: "/shock-library", icon: <NotificationOutlined />, label: <span className={styles.disabledMenuItem}>{copy.shockLibrary}</span> },
       { key: "/notifications", icon: <BellOutlined />, label: <span className={styles.disabledMenuItem}>{copy.notifications}</span> },
@@ -101,11 +105,13 @@ export function AppSidebar(props: { pathname: string }) {
                     ? "/data-maintenance"
                     : props.pathname.startsWith("/strategy-router")
                       ? "/strategy-router"
-                      : props.pathname.startsWith("/strategies") || props.pathname.startsWith("/backtests")
-                        ? "/strategies"
-                        : props.pathname.startsWith("/settings")
-                          ? "/settings"
-                          : "/signal-center";
+                      : props.pathname.startsWith("/ai-strategy-builder")
+                        ? "/ai-strategy-builder"
+                        : props.pathname.startsWith("/strategies") || props.pathname.startsWith("/backtests")
+                          ? "/strategies"
+                          : props.pathname.startsWith("/settings")
+                            ? "/settings"
+                            : "/signal-center";
 
   return (
     <Sider
