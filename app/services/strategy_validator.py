@@ -112,7 +112,15 @@ def validate_strategy_spec(spec: StrategySpec) -> StrategyValidationResult:
                 issues.append(_issue("error", "unknown_rule_field", f"Unknown right-side field: {rhs}", f"{field}.{idx}"))
 
     if normalized.ranking and normalized.ranking not in known_fields:
-        issues.append(_issue("error", "unknown_ranking", f"Unknown ranking field: {normalized.ranking}", "ranking"))
+        issues.append(
+            _issue(
+                "warning",
+                "unknown_ranking",
+                f"Unknown ranking field: {normalized.ranking}; executor will fall back to equal-weight screening.",
+                "ranking",
+            )
+        )
+        normalized.ranking = None
 
     if normalized.risk.stop_loss:
         issues.append(

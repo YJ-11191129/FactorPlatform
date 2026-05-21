@@ -366,6 +366,16 @@ async function proxy(req: Request, ctx: { params: { path: string[] } }) {
 
     const headers = new Headers(req.headers);
     headers.delete("host");
+    headers.delete("connection");
+    headers.delete("content-length");
+    headers.delete("expect");
+    headers.delete("keep-alive");
+    headers.delete("proxy-authenticate");
+    headers.delete("proxy-authorization");
+    headers.delete("te");
+    headers.delete("trailer");
+    headers.delete("transfer-encoding");
+    headers.delete("upgrade");
 
     if (!headers.has("X-API-Key")) {
       const key = apiKey();
@@ -379,7 +389,12 @@ async function proxy(req: Request, ctx: { params: { path: string[] } }) {
     };
 
     if (req.method !== "GET" && req.method !== "HEAD") {
-      init.body = await req.arrayBuffer();
+      const contentType = req.headers.get("content-type") || "";
+      if (contentType.includes("application/json") || contentType.startsWith("text/") || contentType.includes("application/x-www-form-urlencoded")) {
+        init.body = await req.text();
+      } else {
+        init.body = Buffer.from(await req.arrayBuffer()) as BodyInit;
+      }
     }
 
     let upstream: Response;
@@ -391,7 +406,7 @@ async function proxy(req: Request, ctx: { params: { path: string[] } }) {
       } finally {
         clearTimeout(timeout);
       }
-    } catch {
+    } catch (e) {
       if (shouldFallbackToMock()) {
         const mock = mockResponse(pathname, url.searchParams);
         if (mock) return mock;
@@ -402,6 +417,8 @@ async function proxy(req: Request, ctx: { params: { path: string[] } }) {
           error: "BACKEND_TIMEOUT_OR_UNREACHABLE",
           backend_origin: origin,
           target: target.toString(),
+          message: e instanceof Error ? e.message : String(e),
+          cause: e instanceof Error && (e as any).cause ? String((e as any).cause.message || (e as any).cause) : undefined,
         },
         504,
       );

@@ -29,6 +29,14 @@ class TestStrategyAIService(unittest.TestCase):
         self.assertFalse(result.is_valid)
         self.assertTrue(any(issue.code == "lookahead_rule" for issue in result.issues))
 
+    def test_validator_downgrades_unknown_optional_ranking(self) -> None:
+        spec = self._valid_spec()
+        spec.ranking = "missing_rank"
+        result = validate_strategy_spec(spec)
+        self.assertTrue(result.is_valid)
+        self.assertIsNone(result.normalized_spec.ranking)
+        self.assertTrue(any(issue.code == "unknown_ranking" and issue.severity == "warning" for issue in result.issues))
+
     def test_strategy_spec_backtest_uses_delayed_positions(self) -> None:
         prices = pd.DataFrame(
             [

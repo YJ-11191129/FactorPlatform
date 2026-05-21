@@ -143,6 +143,7 @@ export default function MacroIntelPage() {
   }
 
   const llmReady = chain?.llm_ready || report?.llm_ready || false;
+  const llmProvider = chain?.llm_provider || report?.llm_provider;
   const chainResult = chain?.result as Record<string, any> | undefined;
   const reportResult = report?.result as Record<string, any> | undefined;
 
@@ -157,10 +158,11 @@ export default function MacroIntelPage() {
                 <Space size={8}>
                   <Typography.Text type="secondary">LLM</Typography.Text>
                   {llmReady ? <Tag color="green">Ready</Tag> : <Tag>Fallback</Tag>}
+                  {llmProvider?.model ? <Tag>{`${llmProvider.provider || "model"} / ${llmProvider.model}`}</Tag> : null}
                 </Space>
               }
             >
-              <Space direction="vertical" size={10} style={{ width: "100%" }}>
+              <Space orientation="vertical" size={10} style={{ width: "100%" }}>
                 <Input value={topic} onChange={(e) => setTopic(e.target.value)} placeholder="Topic" />
                 <Input value={event} onChange={(e) => setEvent(e.target.value)} placeholder="Event (optional)" />
                 <Select value={region} options={regionOptions} onChange={setRegion} placeholder="Region" />
@@ -203,7 +205,7 @@ export default function MacroIntelPage() {
                     ) : chainErrorMsg ? (
                       <ErrorState title="Macro chain failed" subtitle={chainErrorMsg} onRetry={runChain} />
                     ) : chainResult ? (
-                      <Space direction="vertical" style={{ width: "100%" }} size={8}>
+                      <Space orientation="vertical" style={{ width: "100%" }} size={8}>
                         <Typography.Text type="secondary">Regime</Typography.Text>
                         <Typography.Text>{chainResult.regime_hypothesis || "N/A"}</Typography.Text>
                         <Typography.Text type="secondary">Cause</Typography.Text>
@@ -214,7 +216,7 @@ export default function MacroIntelPage() {
                           dataSource={(chainResult.transmission || []) as any[]}
                           renderItem={(item) => (
                             <List.Item>
-                              <Space direction="vertical" size={0}>
+                              <Space orientation="vertical" size={0}>
                                 <Typography.Text>{item.step}</Typography.Text>
                                 <Typography.Text type="secondary">{[item.channel, item.who, item.timeframe].filter(Boolean).join(" / ")}</Typography.Text>
                               </Space>
@@ -239,7 +241,7 @@ export default function MacroIntelPage() {
                     ) : reportErrorMsg ? (
                       <ErrorState title="Topic report failed" subtitle={reportErrorMsg} onRetry={runReport} />
                     ) : reportResult ? (
-                      <Space direction="vertical" style={{ width: "100%" }} size={8}>
+                      <Space orientation="vertical" style={{ width: "100%" }} size={8}>
                         <Typography.Text type="secondary">Executive summary</Typography.Text>
                         <Typography.Paragraph>{reportResult.executive_summary || "N/A"}</Typography.Paragraph>
                         <Typography.Text type="secondary">Drivers</Typography.Text>
@@ -258,7 +260,7 @@ export default function MacroIntelPage() {
                     ) : newsErrorMsg ? (
                       <ErrorState title="News aggregation failed" subtitle={newsErrorMsg} onRetry={runNews} />
                     ) : news?.items ? (
-                      <Space direction="vertical" style={{ width: "100%" }} size={8}>
+                      <Space orientation="vertical" style={{ width: "100%" }} size={8}>
                         <Typography.Text type="secondary">Highlights</Typography.Text>
                         <List size="small" dataSource={news.summary?.highlights || []} renderItem={(item) => <List.Item>{item}</List.Item>} />
                         <Typography.Text type="secondary">Latest items</Typography.Text>
@@ -267,7 +269,7 @@ export default function MacroIntelPage() {
                           dataSource={news.items || []}
                           renderItem={(item) => (
                             <List.Item>
-                              <Space direction="vertical" size={0}>
+                              <Space orientation="vertical" size={0}>
                                 {item.link ? (
                                   <Typography.Link href={item.link} target="_blank" rel="noreferrer">{item.title}</Typography.Link>
                                 ) : (

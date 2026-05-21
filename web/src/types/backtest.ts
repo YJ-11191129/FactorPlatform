@@ -28,6 +28,9 @@ export type BacktestSummary = {
   fee_bps: number;
   universe_size: number;
   metrics: Record<string, unknown>;
+  strategy_spec?: Record<string, unknown>;
+  timing_note?: string;
+  source?: string;
 };
 
 export type EquityPoint = {

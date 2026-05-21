@@ -6,10 +6,10 @@ from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 from typing import Any
-from urllib.parse import urlparse
 
 import pandas as pd
-import requests
+
+from app.services.llm import build_llm_provider
 
 
 @dataclass(frozen=True)
@@ -195,108 +195,30 @@ def collect_holistic_context(inputs: MacroInputs, lookback_days: int = 120) -> d
 
 
 def _openai_chat_json(model: str, system: str, user: str, timeout_s: int = 60) -> dict[str, Any]:
-    cfg = _llm_config()
-    key = str(cfg.get("api_key") or "").strip()
-    if not key:
-        raise RuntimeError("LLM_API_KEY / OPENAI_API_KEY is not configured")
-
-    url = str(cfg.get("endpoint") or "https://api.openai.com/v1/chat/completions")
-    payload = {
-        "model": model,
-        "temperature": float(cfg.get("temperature") or 0.2),
-        "messages": [
-            {"role": "system", "content": system},
-            {"role": "user", "content": user},
-        ],
-    }
-    if cfg.get("max_tokens") is not None:
-        payload["max_tokens"] = int(cfg["max_tokens"])
-    headers = {"Authorization": f"Bearer {key}", "Content-Type": "application/json"}
-    r = requests.post(url, headers=headers, json=payload, timeout=int(cfg.get("timeout_s") or timeout_s))
-    if r.status_code >= 400:
-        raise RuntimeError(f"OpenAI error: status={r.status_code} body={r.text[:400]}")
-    data = r.json()
-    content = (((data.get("choices") or [{}])[0]).get("message") or {}).get("content") or ""
-    content = content.strip()
-    try:
-        return json.loads(content)
-    except Exception:
-        return {"text": content}
+    provider = build_llm_provider()
+    status = provider.status()
+    if not status.ready:
+        raise RuntimeError(status.reason or f"{status.name} provider is not ready")
+    return provider.complete_json(system=system, user=user, timeout_s=timeout_s)
 
 
 def llm_ready() -> bool:
-    cfg = _llm_config()
-    return bool(cfg.get("api_key"))
+    return build_llm_provider().status().ready
+
+
+def llm_status() -> dict[str, Any]:
+    return _llm_config()
 
 
 def _llm_config() -> dict[str, Any]:
-    provider = (os.getenv("LLM_PROVIDER") or "").strip() or "openai_compatible"
-    api_key = (os.getenv("LLM_API_KEY") or os.getenv("OPENAI_API_KEY") or "").strip()
-    model = (
-        os.getenv("LLM_MODEL")
-        or os.getenv("FACTOR_PLATFORM_LLM_MODEL")
-        or os.getenv("OPENAI_MODEL")
-        or "deepseek-chat"
-    ).strip()
-    temperature_raw = (os.getenv("LLM_TEMPERATURE") or "").strip()
-    timeout_raw = (os.getenv("LLM_TIMEOUT_SECONDS") or "").strip()
-    max_tokens_raw = (os.getenv("LLM_MAX_TOKENS") or "").strip()
-
-    temperature = 0.2
-    if temperature_raw:
-        try:
-            temperature = float(temperature_raw)
-        except Exception:
-            temperature = 0.2
-
-    timeout_s = 90
-    if timeout_raw:
-        try:
-            timeout_s = int(float(timeout_raw))
-        except Exception:
-            timeout_s = 90
-
-    max_tokens: int | None = None
-    if max_tokens_raw:
-        try:
-            max_tokens = int(float(max_tokens_raw))
-        except Exception:
-            max_tokens = None
-
-    base_or_endpoint = (
-        os.getenv("LLM_BASE_URL")
-        or os.getenv("OPENAI_BASE_URL")
-        or os.getenv("OPENAI_API_BASE")
-        or "https://api.deepseek.com"
-    ).strip()
-    endpoint = _normalize_openai_compatible_chat_completions_endpoint(base_or_endpoint)
-
+    status = build_llm_provider().status()
     return {
-        "provider": provider,
-        "api_key": api_key,
-        "model": model,
-        "endpoint": endpoint,
-        "timeout_s": timeout_s,
-        "temperature": temperature,
-        "max_tokens": max_tokens,
+        "provider": status.name,
+        "model": status.model,
+        "endpoint": status.endpoint,
+        "ready": status.ready,
+        "reason": status.reason,
     }
-
-
-def _normalize_openai_compatible_chat_completions_endpoint(url: str) -> str:
-    raw = (url or "").strip()
-    if not raw:
-        return "https://api.openai.com/v1/chat/completions"
-
-    if raw.endswith("/chat/completions") or raw.endswith("/v1/chat/completions"):
-        return raw
-    if raw.endswith("/v1"):
-        return raw + "/chat/completions"
-
-    p = urlparse(raw)
-    if p.scheme in {"http", "https"} and (p.netloc and (p.path == "" or p.path == "/")):
-        return raw.rstrip("/") + "/v1/chat/completions"
-
-    return raw
 
 
 def generate_chain_of_impact(inputs: MacroInputs, context: dict[str, Any]) -> dict[str, Any]:

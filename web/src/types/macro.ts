@@ -60,11 +60,20 @@ export type MacroTopicReportResult = {
   text?: string;
 };
 
+export type MacroLLMProvider = {
+  provider?: string;
+  model?: string;
+  endpoint?: string;
+  ready?: boolean;
+  reason?: string | null;
+};
+
 export type MacroChainResponse = {
   inputs: MacroInputs;
   context: MacroContext;
   result: MacroChainResult | Record<string, unknown>;
   llm_ready: boolean;
+  llm_provider?: MacroLLMProvider;
 };
 
 export type MacroTopicReportResponse = {
@@ -72,4 +81,5 @@ export type MacroTopicReportResponse = {
   context: MacroContext;
   result: MacroTopicReportResult | Record<string, unknown>;
   llm_ready: boolean;
+  llm_provider?: MacroLLMProvider;
 };

@@ -129,7 +129,16 @@ export default function AiStrategyBuilderPage() {
       });
       setLastRun(res.summary);
       setValidation(res.validation);
-      message.success("AI strategy backtest completed");
+      message.success({
+        content: (
+          <Space>
+            <span>AI strategy backtest completed</span>
+            <Button size="small" type="link" onClick={() => router.push(`/backtests/${encodeURIComponent(res.backtest_id)}`)}>
+              Open result
+            </Button>
+          </Space>
+        ),
+      });
     } catch (e) {
       message.error(e instanceof SyntaxError ? "StrategySpec JSON is invalid" : extractErrorMessage(e));
     } finally {
@@ -229,7 +238,7 @@ export default function AiStrategyBuilderPage() {
 
           <div style={{ marginTop: 16 }}>
             <SectionCard title="Provider Status">
-              <Space direction="vertical" style={{ width: "100%" }}>
+              <Space orientation="vertical" style={{ width: "100%" }}>
                 {(providerStatus?.providers || []).map((p) => (
                   <Alert
                     key={p.name}
@@ -325,6 +334,9 @@ export default function AiStrategyBuilderPage() {
                   <Typography.Text code>{String(lastRun.backtest_id || "")}</Typography.Text>
                   <Button size="small" onClick={() => router.push(`/backtests/${encodeURIComponent(String(lastRun.backtest_id || ""))}`)}>
                     Open result
+                  </Button>
+                  <Button size="small" type="primary" onClick={() => router.push(`/backtests/${encodeURIComponent(String(lastRun.backtest_id || ""))}`)}>
+                    Continue analysis
                   </Button>
                 </Space>
               </SectionCard>

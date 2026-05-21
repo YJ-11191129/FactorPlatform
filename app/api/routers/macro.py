@@ -9,6 +9,7 @@ from app.services.macro_intelligence_service import (
     generate_chain_of_impact,
     generate_topic_report,
     llm_ready,
+    llm_status,
 )
 
 
@@ -28,7 +29,7 @@ def chain_of_impact(payload: dict, actor: Actor = Depends(require_role("viewer",
             raise HTTPException(status_code=400, detail="topic is required")
         context = collect_holistic_context(inputs)
         out = generate_chain_of_impact(inputs, context)
-        return {"inputs": payload, "context": context, "result": out, "llm_ready": llm_ready()}
+        return {"inputs": payload, "context": context, "result": out, "llm_ready": llm_ready(), "llm_provider": llm_status()}
     except HTTPException:
         raise
     except Exception as e:
@@ -48,7 +49,7 @@ def topic_report(payload: dict, actor: Actor = Depends(require_role("viewer", "o
             raise HTTPException(status_code=400, detail="topic is required")
         context = collect_holistic_context(inputs)
         out = generate_topic_report(inputs, context)
-        return {"inputs": payload, "context": context, "result": out, "llm_ready": llm_ready()}
+        return {"inputs": payload, "context": context, "result": out, "llm_ready": llm_ready(), "llm_provider": llm_status()}
     except HTTPException:
         raise
     except Exception as e:
