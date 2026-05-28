@@ -68,9 +68,10 @@ def download(url: str, destination: Path, retries: int) -> None:
     temp_path = destination.with_suffix(destination.suffix + ".part")
     if destination.exists():
         if _is_valid_tar(destination):
-            print(f"existing valid archive found: {destination}")
-            return
-        destination.unlink()
+            print(f"existing valid archive found: {destination}; refreshing from remote")
+        else:
+            destination.unlink()
+    temp_path.unlink(missing_ok=True)
 
     expected_total: int | None = None
     last_error: Exception | None = None

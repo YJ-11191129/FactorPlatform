@@ -15,6 +15,7 @@ import pyarrow.dataset as ds
 import pyarrow.compute as pc
 import pyarrow as pa
 
+from app.datahub.loaders.qlib_bin import load_daily_bar as load_qlib_daily_bar
 from app.services.strategy_service import ensure_strategies_loaded
 from app.services.strategy_validator import indicator_alias, validate_strategy_spec
 from app.strategies.registry import get_strategy
@@ -29,6 +30,30 @@ class BacktestArtifact:
     equity_curve_path: str
     positions_path: str
     summary_path: str
+
+
+@dataclass(frozen=True)
+class BacktestPriceSource:
+    kind: str
+    source_id: str
+    provider_uri: str | None = None
+    path: Path | None = None
+    region: str | None = None
+    universe: str | None = None
+    instruments: tuple[str, ...] = ()
+    requested_universe: tuple[str, ...] = ()
+
+    def public_dict(self) -> dict[str, Any]:
+        return {
+            "kind": self.kind,
+            "source_id": self.source_id,
+            "provider_uri": self.provider_uri,
+            "path": str(self.path) if self.path else None,
+            "region": self.region,
+            "universe": self.universe,
+            "instruments": list(self.instruments),
+            "requested_universe": list(self.requested_universe),
+        }
 
 
 def _project_root() -> Path:
@@ -93,6 +118,194 @@ def _resolve_ohlcv_source() -> tuple[str, Path]:
         return "default_real_ohlcv_path", p
 
     raise FileNotFoundError("no ohlcv parquet found for backtest")
+
+
+def _default_qlib_provider_uri(region: str) -> str:
+    if region == "us":
+        return os.getenv("FACTOR_PLATFORM_US_PROVIDER_URI", r"D:\mcQlib\data\qlib_bin\us_data")
+    return os.getenv("FACTOR_PLATFORM_PROVIDER_URI", r"D:\mcQlib\data\qlib_bin\cn_data")
+
+
+def _normalize_ai_backtest_data_source(value: str | None) -> str:
+    raw = (value or os.getenv("FACTOR_PLATFORM_AI_BACKTEST_DATA_SOURCE") or "qlib").strip().lower()
+    if raw in {"wind", "parquet", "ohlcv", "wind_parquet", "local_parquet"}:
+        return "parquet"
+    return "qlib"
+
+
+def _clean_universe(values: Optional[list[str]]) -> tuple[str, ...]:
+    return tuple(str(item).strip() for item in (values or []) if str(item).strip())
+
+
+def _is_cn_symbol(value: str) -> bool:
+    text = value.strip().upper()
+    return bool(re.match(r"^(SZ|SH|BJ)\d{6}$", text) or re.match(r"^\d{6}\.(SZ|SH|BJ)$", text) or re.match(r"^\d{6}$", text))
+
+
+def _to_qlib_cn_symbol(value: str) -> str:
+    text = value.strip().upper()
+    match = re.match(r"^(\d{6})\.(SZ|SH|BJ)$", text)
+    if match:
+        return f"{match.group(2)}{match.group(1)}"
+    match = re.match(r"^(SZ|SH|BJ)(\d{6})$", text)
+    if match:
+        return f"{match.group(1)}{match.group(2)}"
+    if re.match(r"^\d{6}$", text):
+        prefix = "SH" if text.startswith(("5", "6", "9")) else "SZ"
+        return f"{prefix}{text}"
+    return text
+
+
+def _to_qlib_us_symbol(value: str) -> str:
+    return value.strip().upper()
+
+
+def _infer_qlib_region(asset_class: str | None, universe: tuple[str, ...], requested_region: str | None = None) -> str:
+    region = (requested_region or "").strip().lower()
+    if region in {"cn", "china", "a_share", "a-share"}:
+        return "cn"
+    if region in {"us", "usa", "america", "sp500", "nasdaq100"}:
+        return "us"
+
+    joined = " ".join([asset_class or "", *universe]).lower()
+    if any(token in joined for token in ["sp500", "s&p", "nasdaq", "nyse", "us_", "usa", "america"]):
+        return "us"
+    if any(_is_cn_symbol(item) for item in universe):
+        return "cn"
+    if universe and all(re.match(r"^[A-Za-z][A-Za-z0-9.\-]{0,9}$", item.strip()) for item in universe):
+        return "us"
+
+    env_region = os.getenv("FACTOR_PLATFORM_AI_BACKTEST_QLIB_REGION", "cn").strip().lower()
+    return "us" if env_region in {"us", "usa"} else "cn"
+
+
+def _extract_qlib_universe(region: str, requested: tuple[str, ...], explicit: str | None = None) -> tuple[str, tuple[str, ...]]:
+    default_universe = "sp500" if region == "us" else "csi300"
+    allowed = {"all", "sp500", "nasdaq100"} if region == "us" else {"all", "csi100", "csi300", "csi500", "csi800", "csi1000", "csiall"}
+
+    if explicit and explicit.strip().lower() in allowed:
+        qlib_universe = explicit.strip().lower()
+    else:
+        qlib_universe = default_universe
+
+    instruments: list[str] = []
+    for item in requested:
+        token = item.strip()
+        lower = token.lower()
+        if lower in allowed:
+            qlib_universe = lower
+            continue
+        instruments.append(token)
+    return qlib_universe, tuple(instruments)
+
+
+def _normalize_qlib_instruments(region: str, instruments: tuple[str, ...]) -> tuple[str, ...]:
+    if region == "us":
+        return tuple(dict.fromkeys(_to_qlib_us_symbol(item) for item in instruments if item.strip()))
+    return tuple(dict.fromkeys(_to_qlib_cn_symbol(item) for item in instruments if item.strip()))
+
+
+def resolve_ai_backtest_data_source(
+    spec: Mapping[str, Any],
+    *,
+    universe: Optional[list[str]] = None,
+    data_source: str | None = None,
+    provider_uri: str | None = None,
+    qlib_region: str | None = None,
+    qlib_universe: str | None = None,
+) -> BacktestPriceSource:
+    source_kind = _normalize_ai_backtest_data_source(data_source)
+    requested = _clean_universe(universe) or _clean_universe(list(spec.get("universe") or []))
+    if source_kind == "parquet":
+        source_id, path = _resolve_ohlcv_source()
+        return BacktestPriceSource(
+            kind="parquet",
+            source_id=source_id,
+            path=path,
+            requested_universe=requested,
+            instruments=requested,
+        )
+
+    region = _infer_qlib_region(str(spec.get("asset_class") or ""), requested, qlib_region)
+    provider = provider_uri or _default_qlib_provider_uri(region)
+    universe_name, requested_instruments = _extract_qlib_universe(region, requested, qlib_universe)
+    instruments = _normalize_qlib_instruments(region, requested_instruments)
+    source_id = "qlib_us_daily" if region == "us" else "qlib_cn_daily"
+    return BacktestPriceSource(
+        kind="qlib",
+        source_id=source_id,
+        provider_uri=provider,
+        region=region,
+        universe=universe_name,
+        instruments=instruments,
+        requested_universe=requested,
+    )
+
+
+def resolve_backtest_data_source(
+    *,
+    universe: Optional[list[str]] = None,
+    data_source: str | None = None,
+    provider_uri: str | None = None,
+    qlib_region: str | None = None,
+    qlib_universe: str | None = None,
+) -> BacktestPriceSource:
+    requested = _clean_universe(universe)
+    source_kind = "parquet" if data_source is None else _normalize_ai_backtest_data_source(data_source)
+    if source_kind == "parquet":
+        source_id, path = _resolve_ohlcv_source()
+        return BacktestPriceSource(
+            kind="parquet",
+            source_id=source_id,
+            path=path,
+            requested_universe=requested,
+            instruments=requested,
+        )
+
+    region = _infer_qlib_region("equity", requested, qlib_region)
+    provider = provider_uri or _default_qlib_provider_uri(region)
+    universe_name, requested_instruments = _extract_qlib_universe(region, requested, qlib_universe)
+    instruments = _normalize_qlib_instruments(region, requested_instruments)
+    source_id = "qlib_us_daily" if region == "us" else "qlib_cn_daily"
+    return BacktestPriceSource(
+        kind="qlib",
+        source_id=source_id,
+        provider_uri=provider,
+        region=region,
+        universe=universe_name,
+        instruments=instruments,
+        requested_universe=requested,
+    )
+
+
+def _load_daily_bar_from_source(
+    source: BacktestPriceSource,
+    *,
+    start_date: Optional[date] = None,
+    end_date: Optional[date] = None,
+) -> pd.DataFrame:
+    if source.kind == "qlib":
+        if not source.provider_uri:
+            raise FileNotFoundError("qlib provider_uri is not configured")
+        provider = Path(source.provider_uri)
+        if not provider.exists():
+            raise FileNotFoundError(f"qlib provider_uri does not exist: {provider}")
+        return load_qlib_daily_bar(
+            str(provider),
+            universe=source.universe or ("sp500" if source.region == "us" else "csi300"),
+            start_date=start_date,
+            end_date=end_date,
+            instruments=list(source.instruments) if source.instruments else None,
+        )
+
+    if not source.path:
+        raise FileNotFoundError("parquet OHLCV source is not configured")
+    return _load_and_normalize_ohlcv(
+        source.path,
+        start_date=start_date,
+        end_date=end_date,
+        universe=list(source.instruments) if source.instruments else None,
+    )
 
 
 def _load_daily_bar(
@@ -341,6 +554,16 @@ def _compute_metrics(equity: pd.Series) -> dict[str, Any]:
     }
 
 
+def _safe_float(value: Any, default: float = 0.0) -> float:
+    try:
+        out = float(value)
+        if np.isnan(out) or np.isinf(out):
+            return default
+        return out
+    except Exception:
+        return default
+
+
 def _simulate_positions(
     prices: pd.DataFrame,
     pos: pd.DataFrame,
@@ -357,6 +580,7 @@ def _simulate_positions(
     if pos.empty:
         raise ValueError("strategy produced empty positions")
 
+    requested_position_rows = int(pos.shape[0])
     pos = pos.copy()
     pos["trade_date"] = pd.to_datetime(pos["trade_date"]).dt.date
     pos["asset_code"] = pos["asset_code"].astype(str)
@@ -368,9 +592,11 @@ def _simulate_positions(
     pos = pos[pos["asset_code"].isin(available_assets)]
     if pos.empty:
         raise ValueError("strategy positions do not match available price assets")
+    normalized_position_rows = int(pos.shape[0])
 
     sim_assets = sorted(pos["asset_code"].astype(str).unique().tolist())
     prices = prices[prices["asset_code"].astype(str).isin(sim_assets)]
+    price_rows = int(prices.shape[0])
 
     prices = prices.copy()
     if use_adj and "adj_factor" in prices.columns and prices["adj_factor"].notna().any():
@@ -395,13 +621,40 @@ def _simulate_positions(
     cost = turnover * (float(fee_bps) / 10000.0)
     net_ret = gross_ret - cost
     equity = (1.0 + net_ret).cumprod() * float(initial_cash)
+    prev_equity = equity.shift(1).fillna(float(initial_cash))
+
+    metrics = _compute_metrics(equity)
+    daily_net = pd.to_numeric(net_ret, errors="coerce").dropna()
+    gross_exposure = w.abs().sum(axis=1)
+    net_exposure = w.sum(axis=1)
+    metrics.update(
+        {
+            "win_rate": _safe_float((daily_net > 0).mean()) if len(daily_net) else 0.0,
+            "avg_daily_turnover": _safe_float(turnover.mean()),
+            "max_daily_turnover": _safe_float(turnover.max()),
+            "total_turnover": _safe_float(turnover.sum()),
+            "total_transaction_cost": _safe_float((cost * prev_equity).sum()),
+            "avg_gross_exposure": _safe_float(gross_exposure.mean()),
+            "max_gross_exposure": _safe_float(gross_exposure.max()),
+            "avg_net_exposure": _safe_float(net_exposure.mean()),
+        }
+    )
 
     root = _select_backtest_root()
     bt_id = new_backtest_id() if id_prefix == "bt" else new_backtest_id(id_prefix)
     bt_dir = root / bt_id
     bt_dir.mkdir(parents=True, exist_ok=True)
 
-    equity_df = pd.DataFrame({"trade_date": equity.index.astype(str), "equity": equity.values, "net_ret": net_ret.values})
+    equity_df = pd.DataFrame(
+        {
+            "trade_date": equity.index.astype(str),
+            "equity": equity.values,
+            "gross_ret": gross_ret.values,
+            "turnover": turnover.values,
+            "cost": cost.values,
+            "net_ret": net_ret.values,
+        }
+    )
     equity_path = bt_dir / "equity_curve.parquet"
     equity_df.to_parquet(equity_path, index=False)
 
@@ -418,7 +671,25 @@ def _simulate_positions(
         "fee_bps": float(fee_bps),
         "use_adj": bool(use_adj),
         "universe_size": int(universe_size),
-        "metrics": _compute_metrics(equity),
+        "metrics": metrics,
+        "execution_model": {
+            "signal_timestamp": "close_t",
+            "execution_delay": "one_bar",
+            "return_alignment": "positions from t-1 are applied to close-to-close returns on t",
+            "cost_model": f"{float(fee_bps):g} bps applied to one-way turnover",
+            "weight_normalization": "weights are normalized by gross absolute exposure each bar",
+        },
+        "diagnostics": {
+            "price_rows": price_rows,
+            "price_start_date": str(close.index.min()) if len(close.index) else None,
+            "price_end_date": str(close.index.max()) if len(close.index) else None,
+            "price_asset_count": int(len(close.columns)),
+            "requested_position_rows": requested_position_rows,
+            "normalized_position_rows": normalized_position_rows,
+            "dropped_or_collapsed_position_rows": int(max(requested_position_rows - normalized_position_rows, 0)),
+            "simulated_asset_count": int(len(sim_assets)),
+            "simulated_assets_sample": sim_assets[:20],
+        },
     }
     if metadata:
         summary.update(dict(metadata))
@@ -446,17 +717,36 @@ def run_backtest(
     initial_cash: float = 1_000_000.0,
     fee_bps: float = 5.0,
     use_adj: bool = True,
+    data_source: str | None = None,
+    provider_uri: str | None = None,
+    qlib_region: str | None = None,
+    qlib_universe: str | None = None,
 ) -> tuple[BacktestArtifact, dict[str, Any]]:
     ensure_strategies_loaded()
     rs = get_strategy(strategy_id)
-    prices = _load_daily_bar(start_date=start_date, end_date=end_date, universe=universe)
-    prices = _filter_prices(prices, start_date=start_date, end_date=end_date, universe=universe)
+    price_source = resolve_backtest_data_source(
+        universe=universe,
+        data_source=data_source,
+        provider_uri=provider_uri,
+        qlib_region=qlib_region,
+        qlib_universe=qlib_universe,
+    )
+    if data_source is None:
+        prices = _load_daily_bar(start_date=start_date, end_date=end_date, universe=universe)
+    else:
+        prices = _load_daily_bar_from_source(price_source, start_date=start_date, end_date=end_date)
+    filter_universe = list(price_source.instruments) if price_source.instruments else (universe if price_source.kind == "parquet" else None)
+    prices = _filter_prices(prices, start_date=start_date, end_date=end_date, universe=filter_universe)
     if prices.empty:
         raise ValueError("no price data after filtering")
 
     ctx = _Context(prices)
     stg = rs.strategy_cls()
     pos = stg.run(ctx, params)
+    metadata = {
+        "price_data_source": price_source.public_dict(),
+        "timing_note": "Strategy signals are evaluated on bar t; simulation applies positions with a one-bar return delay.",
+    }
     return _simulate_positions(
         prices=prices,
         pos=pos,
@@ -467,6 +757,7 @@ def run_backtest(
         fee_bps=fee_bps,
         use_adj=use_adj,
         universe_size=len(ctx.universe()),
+        metadata=metadata,
     )
 
 
@@ -481,6 +772,10 @@ def run_strategy_spec_backtest(
     initial_cash: float = 1_000_000.0,
     fee_bps: float | None = None,
     use_adj: bool = True,
+    data_source: str | None = None,
+    provider_uri: str | None = None,
+    qlib_region: str | None = None,
+    qlib_universe: str | None = None,
 ) -> tuple[BacktestArtifact, dict[str, Any]]:
     from app.api.schemas.strategy_ai import StrategySpec
 
@@ -492,8 +787,17 @@ def run_strategy_spec_backtest(
     strategy_spec = validation.normalized_spec
 
     price_universe = universe or strategy_spec.universe or None
-    prices = _load_daily_bar(start_date=start_date, end_date=end_date, universe=price_universe)
-    prices = _filter_prices(prices, start_date=start_date, end_date=end_date, universe=price_universe)
+    price_source = resolve_ai_backtest_data_source(
+        strategy_spec.model_dump(),
+        universe=price_universe,
+        data_source=data_source,
+        provider_uri=provider_uri,
+        qlib_region=qlib_region,
+        qlib_universe=qlib_universe,
+    )
+    prices = _load_daily_bar_from_source(price_source, start_date=start_date, end_date=end_date)
+    filter_universe = list(price_source.instruments) if price_source.instruments else None
+    prices = _filter_prices(prices, start_date=start_date, end_date=end_date, universe=filter_universe)
     if prices.empty:
         raise ValueError("no price data after filtering")
 
@@ -502,6 +806,7 @@ def run_strategy_spec_backtest(
         "source": "ai_strategy_spec",
         "strategy_spec": strategy_spec.model_dump(),
         "validation": validation.model_dump(),
+        "price_data_source": price_source.public_dict(),
         "timing_note": "AI StrategySpec signals are formed after close_t; simulation applies positions with a one-bar return delay.",
     }
     return _simulate_positions(
@@ -666,8 +971,34 @@ def run_portfolio_backtest(
 
     signal_assets = sorted(signals["asset_code"].astype(str).unique().tolist())
     price_universe = universe or signal_assets
-    prices = _load_daily_bar(start_date=start_date, end_date=end_date, universe=price_universe)
-    prices = _filter_prices(prices, start_date=start_date, end_date=end_date, universe=price_universe)
+    portfolio_provider = str(portfolio.get("provider_uri") or "").strip()
+    if portfolio_provider:
+        provider_lower = portfolio_provider.lower()
+        portfolio_universe = str(portfolio.get("universe") or "").strip().lower() or None
+        region = _infer_qlib_region("equity", tuple([*(price_universe or []), portfolio_universe or ""]), None)
+        if "us_data" in provider_lower or portfolio_universe in {"sp500", "nasdaq100"}:
+            region = "us"
+        instruments = _normalize_qlib_instruments(region, tuple(price_universe or []))
+        price_source = BacktestPriceSource(
+            kind="qlib",
+            source_id="qlib_us_daily" if region == "us" else "qlib_cn_daily",
+            provider_uri=portfolio_provider,
+            region=region,
+            universe=portfolio_universe or ("sp500" if region == "us" else "csi300"),
+            instruments=instruments,
+            requested_universe=tuple(price_universe or []),
+        )
+        prices = _load_daily_bar_from_source(price_source, start_date=start_date, end_date=end_date)
+        prices = _filter_prices(
+            prices,
+            start_date=start_date,
+            end_date=end_date,
+            universe=list(price_source.instruments) if price_source.instruments else None,
+        )
+    else:
+        price_source = resolve_backtest_data_source(universe=price_universe, data_source=None)
+        prices = _load_daily_bar(start_date=start_date, end_date=end_date, universe=price_universe)
+        prices = _filter_prices(prices, start_date=start_date, end_date=end_date, universe=price_universe)
     if prices.empty:
         raise ValueError("no price data after filtering")
 
@@ -680,6 +1011,7 @@ def run_portfolio_backtest(
     metadata = {
         "portfolio_id": portfolio_id,
         "source_signal_artifact_path": portfolio.get("signal_artifact_path"),
+        "price_data_source": price_source.public_dict(),
         "timing_note": portfolio.get(
             "timing_note",
             "Portfolio signal trade_date is already next-day effective; backtest applies positions after one more close-to-close shift.",
@@ -718,7 +1050,21 @@ def list_backtests(limit: int = 50) -> list[dict[str, Any]]:
     return out
 
 
+def _backtest_dir(backtest_id: str) -> Path:
+    if not re.match(r"^[A-Za-z0-9_.-]+$", str(backtest_id)):
+        raise ValueError("invalid backtest_id")
+    return _select_backtest_root() / str(backtest_id)
+
+
+def read_backtest_summary(backtest_id: str) -> dict[str, Any]:
+    p = _backtest_dir(backtest_id) / "summary.json"
+    if not p.exists():
+        raise FileNotFoundError(f"backtest summary not found: {backtest_id}")
+    return json.loads(p.read_text(encoding="utf-8"))
+
+
 def read_equity_curve(backtest_id: str) -> pd.DataFrame:
-    root = _select_backtest_root()
-    p = root / backtest_id / "equity_curve.parquet"
+    p = _backtest_dir(backtest_id) / "equity_curve.parquet"
+    if not p.exists():
+        raise FileNotFoundError(f"backtest equity curve not found: {backtest_id}")
     return pd.read_parquet(p)

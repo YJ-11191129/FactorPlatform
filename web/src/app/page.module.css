@@ -3,9 +3,9 @@
   overflow-x: hidden;
   color: var(--fp-text);
   background:
-    radial-gradient(circle at 18% -4%, rgba(56, 189, 248, 0.16), transparent 34rem),
-    radial-gradient(circle at 80% 10%, rgba(94, 234, 212, 0.1), transparent 30rem),
-    linear-gradient(180deg, #081524 0%, #0b1830 48%, #07111f 100%);
+    radial-gradient(circle at 18% -4%, rgba(34, 211, 238, 0.1), transparent 34rem),
+    radial-gradient(circle at 82% 8%, rgba(52, 211, 153, 0.07), transparent 30rem),
+    linear-gradient(180deg, #05070b 0%, #08111f 46%, #05070b 100%);
 }
 
 .header {
@@ -159,14 +159,14 @@
   gap: 42px;
   align-items: center;
   margin: 0 auto;
-  padding: 72px 0 54px;
+  padding: 52px 0 34px;
 }
 
 .heroCopy h1 {
   max-width: 760px;
   margin: 0;
   color: var(--fp-text);
-  font-size: clamp(44px, 6vw, 74px);
+  font-size: clamp(42px, 5.4vw, 66px);
   font-weight: 830;
   line-height: 0.98;
   letter-spacing: 0;
@@ -233,7 +233,7 @@
 .terminalHeader {
   justify-content: space-between;
   gap: 16px;
-  padding: 22px 24px 16px;
+  padding: 18px 22px 14px;
   border-bottom: 1px solid var(--fp-border);
 }
 
@@ -270,7 +270,7 @@
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 10px;
-  padding: 16px;
+  padding: 14px;
 }
 
 .assetButton {
@@ -283,12 +283,13 @@
   text-align: left;
   border: 1px solid var(--fp-border);
   border-radius: 16px;
-  padding: 12px;
+  padding: 10px;
   background: rgba(255, 255, 255, 0.045);
 }
 
 .assetButton span,
 .assetButton strong,
+.assetButton em,
 .metricCard strong,
 .screeningRow strong,
 .scenarioItem strong {
@@ -303,6 +304,13 @@
 .assetButton small {
   color: var(--fp-muted-2);
   font-size: 11px;
+}
+
+.assetButton em {
+  color: var(--fp-text);
+  font-size: 17px;
+  font-style: normal;
+  font-weight: 780;
 }
 
 .positive {
@@ -363,7 +371,40 @@
   display: block;
   width: 100%;
   height: auto;
-  min-height: 230px;
+  min-height: 194px;
+}
+
+.chartMetaGrid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  padding: 0 14px 14px;
+}
+
+.chartMetaGrid div {
+  min-width: 0;
+  border: 1px solid var(--fp-border);
+  border-radius: 12px;
+  padding: 10px;
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.chartMetaGrid span {
+  display: block;
+  color: var(--fp-muted-2);
+  font-size: 10px;
+  font-weight: 760;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.chartMetaGrid strong {
+  display: block;
+  margin-top: 7px;
+  color: #dbeafe;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1.45;
 }
 
 .gridLine {
@@ -402,23 +443,32 @@
   font-size: 18px;
 }
 
+.metricCard em {
+  display: block;
+  margin-top: 7px;
+  color: var(--fp-muted-2);
+  font-size: 11px;
+  font-style: normal;
+  line-height: 1.4;
+}
+
 .terminalFooter {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 12px;
   padding: 0 16px 18px;
 }
 
 .researchNote {
   border-radius: 16px;
-  padding: 14px;
+  padding: 12px;
 }
 
 .researchNote p {
   margin: 8px 0 0;
   color: var(--fp-muted);
-  font-size: 12px;
-  line-height: 1.55;
+  font-size: 11px;
+  line-height: 1.48;
 }
 
 .section,
@@ -451,6 +501,13 @@
   font-weight: 800;
   line-height: 1.05;
   letter-spacing: 0;
+}
+
+.agentPanel h2,
+.riskSection h2,
+.finalCta h2 {
+  font-size: clamp(28px, 3.4vw, 40px);
+  line-height: 1.08;
 }
 
 .sectionHeader p,
@@ -537,13 +594,28 @@
   margin-top: 28px;
 }
 
-.agentList span {
+.agentList article {
   color: #dff6ff;
   font-size: 13px;
   border: 1px solid var(--fp-border);
   border-radius: 12px;
   padding: 12px;
   background: rgba(255, 255, 255, 0.035);
+}
+
+.agentList strong {
+  display: block;
+  color: var(--fp-text);
+  font-size: 13px;
+  line-height: 1.35;
+}
+
+.agentList span {
+  display: block;
+  margin-top: 7px;
+  color: var(--fp-muted);
+  font-size: 12px;
+  line-height: 1.45;
 }
 
 .signalPanel {
@@ -556,6 +628,46 @@
   gap: 10px;
   color: var(--fp-accent);
   font-weight: 760;
+}
+
+.screeningSummary {
+  display: grid;
+  gap: 12px;
+  margin-top: 18px;
+  border: 1px solid rgba(34, 211, 238, 0.16);
+  border-radius: 16px;
+  padding: 14px;
+  background: rgba(34, 211, 238, 0.06);
+}
+
+.screeningSummary span {
+  display: block;
+  color: var(--fp-muted-2);
+  font-size: 11px;
+  font-weight: 760;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.screeningSummary strong {
+  display: block;
+  margin-top: 7px;
+  color: var(--fp-text);
+  font-size: 16px;
+}
+
+.probabilityRail {
+  overflow: hidden;
+  height: 8px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.07);
+}
+
+.probabilityRail span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, var(--fp-accent), var(--fp-success));
 }
 
 .screeningRow {
@@ -750,6 +862,12 @@
     grid-template-columns: 1fr;
   }
 
+  .assetStrip,
+  .terminalFooter,
+  .chartMetaGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .metricsPanel,
   .featureGrid,
   .pricingGrid {
@@ -783,7 +901,7 @@
   }
 
   .headerActions {
-    display: none;
+    margin-left: auto;
   }
 
   .headerCta {
@@ -808,28 +926,28 @@
 
   .heroCopy {
     width: 100%;
-    max-width: 342px;
+    max-width: 100%;
   }
 
   .heroCopy h1 {
     max-width: 100%;
-    font-size: 30px;
+    font-size: clamp(32px, 10vw, 44px);
     line-height: 1.05;
   }
 
   .heroCopy p {
-    max-width: 342px;
+    max-width: 620px;
     font-size: 15px;
     line-height: 1.75;
   }
 
   .terminal {
     width: 100%;
-    max-width: 342px;
+    max-width: 100%;
   }
 
-  .assetStrip,
   .terminalFooter,
+  .chartMetaGrid,
   .featureGrid,
   .pricingGrid,
   .promptGrid,
@@ -857,6 +975,12 @@
 
   .footer p {
     text-align: left;
+  }
+}
+
+@media (max-width: 360px) {
+  .assetStrip {
+    grid-template-columns: 1fr;
   }
 }
 

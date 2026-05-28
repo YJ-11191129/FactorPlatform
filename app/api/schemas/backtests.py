@@ -23,6 +23,10 @@ class RunBacktestIn(BaseModel):
     start_date: Optional[date] = None
     end_date: Optional[date] = None
     universe: Optional[List[str]] = None
+    data_source: Optional[str] = None
+    provider_uri: Optional[str] = None
+    qlib_region: Optional[str] = None
+    qlib_universe: Optional[str] = None
     initial_cash: float = 1_000_000.0
     fee_bps: float = 5.0
     use_adj: bool = True
@@ -46,6 +50,14 @@ class BacktestSummaryOut(BaseModel):
     fee_bps: float
     universe_size: int
     metrics: Dict[str, Any]
+    source: Optional[str] = None
+    strategy_spec: Optional[Dict[str, Any]] = None
+    validation: Optional[Dict[str, Any]] = None
+    price_data_source: Optional[Dict[str, Any]] = None
+    timing_note: Optional[str] = None
+    execution_model: Optional[Dict[str, Any]] = None
+    diagnostics: Optional[Dict[str, Any]] = None
+    data_health: Optional[Dict[str, Any]] = None
 
 
 class BacktestDataStatusOut(BaseModel):

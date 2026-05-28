@@ -3,22 +3,22 @@
 }
 
 :root {
-  --fp-bg: #07111f;
-  --fp-bg-soft: #0b1830;
-  --fp-surface: #0f1b2e;
-  --fp-surface-muted: #16243a;
-  --fp-surface-glass: rgba(15, 27, 46, 0.82);
-  --fp-border: rgba(203, 213, 225, 0.12);
-  --fp-border-strong: rgba(203, 213, 225, 0.2);
+  --fp-bg: #05070b;
+  --fp-bg-soft: #08111f;
+  --fp-surface: #0b1220;
+  --fp-surface-muted: #111827;
+  --fp-surface-glass: rgba(11, 18, 32, 0.84);
+  --fp-border: rgba(255, 255, 255, 0.08);
+  --fp-border-strong: rgba(255, 255, 255, 0.14);
   --fp-text: #f8fafc;
-  --fp-muted: #a8b4c6;
-  --fp-muted-2: #718096;
-  --fp-accent: #38bdf8;
-  --fp-accent-2: #5eead4;
-  --fp-accent-soft: rgba(56, 189, 248, 0.14);
+  --fp-muted: #94a3b8;
+  --fp-muted-2: #64748b;
+  --fp-accent: #22d3ee;
+  --fp-accent-2: #34d399;
+  --fp-accent-soft: rgba(34, 211, 238, 0.12);
   --fp-success: #34d399;
-  --fp-warning: #fbbf24;
-  --fp-risk: #fb7185;
+  --fp-warning: #f59e0b;
+  --fp-risk: #f87171;
   --fp-radius: 14px;
   --fp-radius-lg: 20px;
   --fp-shadow: 0 18px 45px rgba(2, 8, 23, 0.26);
@@ -35,9 +35,9 @@ body {
 body {
   color: var(--fp-text);
   background:
-    radial-gradient(circle at 14% -4%, rgba(56, 189, 248, 0.14), transparent 32rem),
-    radial-gradient(circle at 90% 4%, rgba(94, 234, 212, 0.1), transparent 28rem),
-    linear-gradient(180deg, #081524 0%, #0b1830 420px, var(--fp-bg) 100%),
+    radial-gradient(circle at 14% -4%, rgba(34, 211, 238, 0.1), transparent 32rem),
+    radial-gradient(circle at 90% 4%, rgba(52, 211, 153, 0.07), transparent 28rem),
+    linear-gradient(180deg, #05070b 0%, #08111f 420px, var(--fp-bg) 100%),
     var(--fp-bg);
   font-family:
     Inter,

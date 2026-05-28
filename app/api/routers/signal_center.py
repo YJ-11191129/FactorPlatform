@@ -432,6 +432,7 @@ def refresh_signals(payload: dict[str, Any] | None = None) -> dict[str, Any]:
             provider_uri=body.get("provider_uri"),
             universe=body.get("universe"),
             topn=body.get("topn"),
+            instrument_limit=body.get("instrument_limit"),
             dry_run=bool(body.get("dry_run", False)),
         )
     except Exception as e:

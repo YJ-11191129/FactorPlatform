@@ -31,7 +31,6 @@ export function StrategyListPanel(props: {
   }, [props.strategies, q, owner]);
 
   const columns: ColumnsType<StrategyInfo> = [
-    { title: "ID", dataIndex: "strategy_id", key: "strategy_id", width: 160 },
     {
       title: "策略",
       dataIndex: "strategy_name",
@@ -41,9 +40,12 @@ export function StrategyListPanel(props: {
           <Typography.Text strong>{v}</Typography.Text>
           <div>
             <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-              {r.description || "-"}
+              {r.strategy_id}
             </Typography.Text>
           </div>
+          <Typography.Paragraph type="secondary" style={{ margin: "4px 0 0", fontSize: 12 }}>
+            {r.description || "-"}
+          </Typography.Paragraph>
         </div>
       ),
     },
@@ -60,7 +62,7 @@ export function StrategyListPanel(props: {
         </Space>
       }
       extra={
-        <Space>
+        <Space wrap>
           <Select
             allowClear
             placeholder="Owner"
@@ -69,7 +71,7 @@ export function StrategyListPanel(props: {
             options={owners.map((o) => ({ label: o, value: o }))}
             style={{ width: 140 }}
           />
-          <Input placeholder="搜索" value={q} onChange={(e) => setQ(e.target.value)} style={{ width: 220 }} />
+          <Input placeholder="搜索策略" value={q} onChange={(e) => setQ(e.target.value)} style={{ width: 220 }} />
         </Space>
       }
     >

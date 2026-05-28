@@ -14,8 +14,8 @@ from app.api.schemas.strategy_ai import (
     StrategyValidationResult,
     ValidateStrategyIn,
 )
-from app.services.backtest_service import run_strategy_spec_backtest
-from app.services.data_maintenance_service import evaluate_backtest_data_gate
+from app.services.backtest_service import resolve_ai_backtest_data_source, run_strategy_spec_backtest
+from app.services.data_maintenance_service import evaluate_backtest_data_gate, evaluate_stock_radar_data_gate
 from app.services.llm import llm_provider_status
 from app.services.strategy_ai_service import explain_backtest, generate_strategy_spec
 from app.services.strategy_validator import validate_strategy_spec
@@ -67,7 +67,24 @@ def run_ai_backtest_api(payload: RunAiBacktestIn, actor: Actor = Depends(require
                 detail={"message": "strategy spec validation failed", "validation": validation.model_dump()},
             )
 
-        data_gate = evaluate_backtest_data_gate(requested_end_date=payload.end_date)
+        price_source = resolve_ai_backtest_data_source(
+            validation.normalized_spec.model_dump(),
+            universe=payload.universe,
+            data_source=payload.data_source,
+            provider_uri=payload.provider_uri,
+            qlib_region=payload.qlib_region,
+            qlib_universe=payload.qlib_universe,
+        )
+        if price_source.kind == "qlib" and price_source.provider_uri:
+            data_gate = evaluate_stock_radar_data_gate(
+                price_source.provider_uri,
+                requested_end_date=payload.end_date,
+                allow_latest_available=True,
+            )
+            data_gate["price_data_source"] = price_source.public_dict()
+        else:
+            data_gate = evaluate_backtest_data_gate(requested_end_date=payload.end_date, allow_latest_available=True)
+            data_gate["price_data_source"] = price_source.public_dict()
         if data_gate.get("blocking_status") == "BLOCKED":
             raise HTTPException(status_code=409, detail=data_gate.get("message") or "data freshness gate blocked backtest")
 
@@ -79,6 +96,10 @@ def run_ai_backtest_api(payload: RunAiBacktestIn, actor: Actor = Depends(require
             initial_cash=payload.initial_cash,
             fee_bps=payload.fee_bps,
             use_adj=payload.use_adj,
+            data_source=payload.data_source,
+            provider_uri=payload.provider_uri,
+            qlib_region=payload.qlib_region,
+            qlib_universe=payload.qlib_universe,
         )
         summary["data_health"] = data_gate
         summary["created_by_actor"] = actor.key_id

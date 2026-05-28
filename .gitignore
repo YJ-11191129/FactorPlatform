@@ -16,6 +16,7 @@ __pycache__/
 .vercel/
 .trae/
 logs/
+output/
 web/build_wsl.code
 web/wsl_write_test.txt
 .DS_Store

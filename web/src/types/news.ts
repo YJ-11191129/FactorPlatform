@@ -13,6 +13,7 @@ export type NewsSearchResponse = {
   items: NewsItem[];
   count: number;
   latency_ms: number;
+  warnings?: string[];
 };
 
 export type NewsSummary = {
@@ -26,4 +27,8 @@ export type NewsSummaryResponse = {
   count: number;
   summary: NewsSummary;
   items: NewsItem[];
+  source?: string;
+  endpoint?: string;
+  provider?: string;
+  warnings?: string[];
 };

@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Any, Mapping
 
 import numpy as np
+import pandas as pd
 
 from app.datahub.loaders.qlib_bin import read_calendar
 from app.services.data_maintenance_service import evaluate_stock_radar_data_gate
@@ -134,6 +135,22 @@ def _configured_topn() -> int:
         return 30
 
 
+def _coerce_instrument_limit(value: Any, default: int | None) -> int | None:
+    if value is None:
+        return default
+    text = str(value).strip().lower()
+    if text in {"", "0", "all", "none", "null"}:
+        return None
+    try:
+        return max(1, int(float(text)))
+    except Exception:
+        return default
+
+
+def _configured_instrument_limit() -> int | None:
+    return _coerce_instrument_limit(os.getenv("FACTOR_PLATFORM_SIGNAL_INSTRUMENT_LIMIT", "80"), 80)
+
+
 def _clamp(value: float, lo: float, hi: float) -> float:
     return max(lo, min(hi, value))
 
@@ -203,6 +220,9 @@ def _regime_env(provider_uri: str | None, universe: str | None):
 
 
 def _base_regime_snapshot(provider_uri: str | None = None, universe: str | None = None) -> dict[str, Any]:
+    cached = _cached_regime_snapshot(provider_uri, universe)
+    if cached:
+        return cached
     try:
         if provider_uri or universe:
             with _regime_env(provider_uri, universe):
@@ -228,6 +248,56 @@ def _base_regime_snapshot(provider_uri: str | None = None, universe: str | None 
         "provider_uri": provider_uri,
         "universe": universe,
     }
+
+
+def _cached_regime_snapshot(provider_uri: str | None = None, universe: str | None = None) -> dict[str, Any] | None:
+    if os.getenv("FACTOR_PLATFORM_SIGNAL_USE_CACHED_REGIME", "1").strip().lower() in {"0", "false", "no", "off"}:
+        return None
+    if provider_uri:
+        default_provider = os.getenv("FACTOR_PLATFORM_PROVIDER_URI", DEFAULT_QLIB_PROVIDER_URI)
+        try:
+            provider_key = os.path.normcase(str(Path(provider_uri).resolve(strict=False)))
+            default_key = os.path.normcase(str(Path(default_provider).resolve(strict=False)))
+        except Exception:
+            provider_key = os.path.normcase(str(provider_uri))
+            default_key = os.path.normcase(str(default_provider))
+        if provider_key != default_key:
+            return None
+    path = _project_root() / "data" / "exports" / "regime_engine" / "regime_snapshot_daily.parquet"
+    if not path.exists():
+        return None
+    try:
+        df = pd.read_parquet(path)
+        if df.empty:
+            return None
+        row = df.iloc[-1]
+        row_date = pd.Timestamp(row["date"]).date()
+        return {
+            "date": row_date.isoformat(),
+            "scope": str(row.get("scope", "A_SHARE_ALL")),
+            "model_version": str(row.get("model_version", "regime_v1_gaussian_cpd")),
+            "force_real_daily_mode": True,
+            "snapshot_time": row_date.strftime("%Y-%m-%dT15:00:00+08:00"),
+            "regime_label": row.get("regime_label", "UNKNOWN"),
+            "risk_regime": row.get("risk_regime", row.get("regime_label", "UNKNOWN")),
+            "market_state": row.get("market_state", "RANGE_BOUND"),
+            "event_context": row.get("event_context", "NONE"),
+            "trend_strength": row.get("trend_strength", "UNKNOWN"),
+            "cluster_label": row.get("cluster_label", "UNKNOWN"),
+            "geo_energy_flag": bool(row.get("geo_energy_flag", False)),
+            "cpd_score": float(row.get("cpd_score", 0.0)),
+            "cluster_id": int(row.get("cluster_id", -1)),
+            "severity_score": float(row.get("severity_score", 0.0)),
+            "volatility_state": row.get("volatility_state", "UNKNOWN"),
+            "liquidity_state": row.get("liquidity_state", "UNKNOWN"),
+            "tail_risk_state": row.get("tail_risk_state", "UNKNOWN"),
+            "market_risk_level": row.get("market_risk_level", "UNKNOWN"),
+            "data_source": row.get("data_source", "cached_regime_artifact"),
+            "provider_uri": provider_uri,
+            "universe": universe,
+        }
+    except Exception:
+        return None
 
 
 def _trading_lag_days(provider_uri: str, regime_date: date | None, signal_date: date | None) -> int | None:
@@ -511,11 +581,13 @@ def generate_signal_snapshot(
     provider_uri: str | None = None,
     universe: str | None = None,
     topn: int | None = None,
+    instrument_limit: int | str | None = None,
     dry_run: bool = False,
 ) -> dict[str, Any]:
     provider = provider_uri or _configured_provider_uri()
     signal_universe = universe or _configured_universe()
     signal_topn = topn or _configured_topn()
+    signal_instrument_limit = _coerce_instrument_limit(instrument_limit, _configured_instrument_limit())
     generated_at = _now_iso()
     run_id = _signal_run_id()
     data_health = evaluate_stock_radar_data_gate(provider)
@@ -523,6 +595,7 @@ def generate_signal_snapshot(
         "provider_uri": provider,
         "universe": signal_universe,
         "topn": signal_topn,
+        "instrument_limit": signal_instrument_limit,
         "factors": DEFAULT_SIGNAL_FACTORS,
     }
 
@@ -563,7 +636,7 @@ def generate_signal_snapshot(
         provider_uri=provider,
         universe=signal_universe,
         factors=DEFAULT_SIGNAL_FACTORS,
-        instrument_limit=None,
+        instrument_limit=signal_instrument_limit,
         topn=signal_topn,
         min_factor_count=1,
     )

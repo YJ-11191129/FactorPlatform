@@ -13,7 +13,7 @@ class Settings:
     database_url: str = field(
         default_factory=lambda: os.getenv(
             "DATABASE_URL",
-            "postgresql+psycopg://postgres:postgres@localhost:5432/factor_platform",
+            "postgresql+psycopg://postgres:factorplatform_dev_password@localhost:5432/factor_platform",
         )
     )
     redis_url: str = field(default_factory=lambda: os.getenv("REDIS_URL", "redis://localhost:6379/0"))

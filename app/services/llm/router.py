@@ -28,6 +28,15 @@ def _int_env(name: str, default: int | None) -> int | None:
         return default
 
 
+def _normalize_provider_name(raw: str | None) -> str:
+    name = (raw or "").strip().lower()
+    if name in {"local", "ollama", "lmstudio", "local_openai"}:
+        return "local"
+    if name in {"", "deepseek", "openai_compatible", "openai-compatible", "openai"}:
+        return "deepseek"
+    return "deepseek"
+
+
 def _deepseek_provider() -> OpenAICompatibleProvider:
     base = (os.getenv("LLM_BASE_URL") or os.getenv("OPENAI_BASE_URL") or "https://api.deepseek.com").strip()
     return OpenAICompatibleProvider(
@@ -61,14 +70,14 @@ def _local_provider() -> LocalOpenAICompatibleProvider:
 
 
 def build_llm_provider(preferred: str | None = None):
-    name = (preferred or os.getenv("LLM_PROVIDER") or "deepseek").strip().lower()
-    if name in {"local", "ollama", "lmstudio", "local_openai"}:
+    name = _normalize_provider_name(preferred or os.getenv("LLM_PROVIDER"))
+    if name == "local":
         return _local_provider()
     return _deepseek_provider()
 
 
 def llm_provider_status() -> dict[str, Any]:
-    default_provider = (os.getenv("LLM_PROVIDER") or "deepseek").strip().lower()
+    default_provider = _normalize_provider_name(os.getenv("LLM_PROVIDER"))
     providers = [_deepseek_provider().status(), _local_provider().status()]
     return {
         "default_provider": default_provider,

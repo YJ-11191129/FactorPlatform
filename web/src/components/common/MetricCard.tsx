@@ -19,9 +19,8 @@ export function MetricCard(props: {
         borderRadius: "var(--fp-radius)",
         cursor: props.onClick ? "pointer" : "default",
         border: "1px solid var(--fp-border)",
-        background:
-          "linear-gradient(180deg, rgba(22, 36, 58, 0.88), rgba(15, 27, 46, 0.94))",
-        boxShadow: "var(--fp-shadow)",
+        background: "var(--fp-surface)",
+        boxShadow: "0 12px 30px rgba(15, 23, 42, 0.05)",
       }}
     >
       <Statistic title={props.title} value={props.value ?? "-"} suffix={props.suffix} />

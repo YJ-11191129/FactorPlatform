@@ -2,10 +2,11 @@
 
 import { Alert, Button, Card, Col, Divider, Form, Input, InputNumber, Progress, Row, Select, Space, Table, Tag, Tooltip, Typography, message } from "antd";
 import type { ColumnsType } from "antd/es/table";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { PageContainer } from "@/components/layout/PageContainer";
-import { listFactorMetadata, runStockRadar, type BackendFactorInfo, type StockRadarFactorSpec, type StockRadarItem, type StockRadarPayload, type StockRadarResult } from "@/lib/api/factors";
+import { useAdvancedMode } from "@/lib/advanced-mode";
+import { buildDemoStockRadar, listFactorMetadata, runStockRadar, type BackendFactorInfo, type StockRadarFactorSpec, type StockRadarItem, type StockRadarPayload, type StockRadarResult } from "@/lib/api/factors";
 import { useLanguage, type Language } from "@/lib/i18n";
 
 import styles from "./stock-radar.module.css";
@@ -78,14 +79,20 @@ function hasNParam(factorName: string | undefined, factorByName: Map<string, Bac
   if (factorName === "MOM_RET_N_D_V1" || factorName === "TREND_MA_BIAS_N_D_V1") return true;
   return Boolean(factorByName.get(factorName)?.parameter_schema?.n);
 }
-function getFactorDescription(factorName: string | undefined, factorByName: Map<string, BackendFactorInfo>) {
+function getFactorDescription(factorName: string | undefined, factorByName: Map<string, BackendFactorInfo>, language: Language, advancedMode: boolean) {
   if (!factorName) return "";
   const factor = factorByName.get(factorName);
+  if (!advancedMode) {
+    const category = categoryLabel(factor?.category, language);
+    return language === "zh"
+      ? `用于衡量${category}特征，并参与综合排序。`
+      : `Measures ${category.toLowerCase()} characteristics for the composite ranking.`;
+  }
   const family = schemaValue(factor?.parameter_schema, "family");
   const expression = schemaValue(factor?.parameter_schema, "expression");
   return [factor?.description || factor?.display_name || factorName, family ? `Family: ${family}` : "", expression ? `Expression: ${expression}` : ""].filter(Boolean).join(" | ");
 }
-function buildFactorOptions(factors: BackendFactorInfo[], language: Language) {
+function buildFactorOptions(factors: BackendFactorInfo[], language: Language, advancedMode: boolean) {
   const grouped = new Map<string, BackendFactorInfo[]>();
   factors.forEach((factor) => grouped.set(factor.category || "UNKNOWN", [...(grouped.get(factor.category || "UNKNOWN") || []), factor]));
   return Array.from(grouped.entries()).sort(([a], [b]) => categoryLabel(a, language).localeCompare(categoryLabel(b, language))).map(([category, items]) => ({
@@ -93,7 +100,10 @@ function buildFactorOptions(factors: BackendFactorInfo[], language: Language) {
     options: items.slice().sort((a, b) => a.factor_name.localeCompare(b.factor_name)).map((factor) => {
       const family = schemaValue(factor.parameter_schema, "family");
       const code = schemaValue(factor.parameter_schema, "qlib_code") || shortFactorName(factor.factor_name);
-      return { label: `${code} · ${factor.display_name || factor.factor_name}${family ? ` · ${family}` : ""}`, value: factor.factor_name, searchText: `${factor.factor_name} ${factor.display_name || ""} ${factor.description || ""} ${family}` };
+      const label = advancedMode
+        ? `${code} · ${factor.display_name || factor.factor_name}${family ? ` · ${family}` : ""}`
+        : `${factor.display_name || code} · ${categoryLabel(factor.category, language)}`;
+      return { label, value: factor.factor_name, searchText: `${factor.factor_name} ${factor.display_name || ""} ${factor.description || ""} ${family}` };
     }),
   }));
 }
@@ -120,8 +130,42 @@ function presetFactors(preset: FactorPreset): StockRadarFactorSpec[] {
   ];
 }
 
+function normalizePreset(value: string | null): FactorPreset {
+  return value === "trend" || value === "risk" || value === "volume" ? value : "momentum";
+}
+
+function normalizeProvider(value: string | null): ProviderPreset {
+  return value === "us" ? "us" : "cn";
+}
+
+function positiveInt(value: string | null, fallback: number, max: number) {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed <= 0) return fallback;
+  return Math.min(Math.floor(parsed), max);
+}
+
+function readRadarDefaults(params: Pick<URLSearchParams, "get" | "has">) {
+  const hasContext = ["source", "provider", "preset", "universe", "asset", "symbol", "autoRun"].some((key) => params.has(key));
+  if (!hasContext) return null;
+
+  const provider = normalizeProvider(params.get("provider"));
+  const universe = params.get("universe")?.trim() || (provider === "us" ? "sp500" : "csi300");
+  return {
+    provider,
+    preset: normalizePreset(params.get("preset")),
+    universe,
+    asset: params.get("asset")?.trim() || params.get("symbol")?.trim() || "",
+    source: params.get("source")?.trim() || "",
+    autoRun: params.get("autoRun") === "1",
+    instrumentLimit: positiveInt(params.get("instrument_limit"), provider === "us" ? 500 : 300, 6000),
+    topn: positiveInt(params.get("topn"), provider === "us" ? 10 : 50, 1000),
+  };
+}
+
 export default function StockRadarPage() {
+  const initializedSearchRef = useRef("");
   const { language } = useLanguage();
+  const [advancedMode] = useAdvancedMode();
   const zh = language === "zh";
   const t = useCallback((cn: string, en: string) => (zh ? cn : en), [zh]);
   const [form] = Form.useForm<StockRadarPayload>();
@@ -133,10 +177,11 @@ export default function StockRadarPage() {
   const [error, setError] = useState<string | null>(null);
   const [assetQuery, setAssetQuery] = useState("");
   const [providerPreset, setProviderPreset] = useState<ProviderPreset>("cn");
+  const [entryContext, setEntryContext] = useState("");
 
   const factorSource = factorInfos.length > 0 ? factorInfos : FALLBACK_FACTORS;
   const factorByName = useMemo(() => new Map(factorSource.map((factor) => [factor.factor_name, factor])), [factorSource]);
-  const factorOptions = useMemo(() => buildFactorOptions(factorSource, language), [factorSource, language]);
+  const factorOptions = useMemo(() => buildFactorOptions(factorSource, language, advancedMode), [advancedMode, factorSource, language]);
   const qlibAlphaCount = useMemo(() => factorSource.filter((factor) => factor.factor_name.startsWith("QLIB_ALPHA_")).length, [factorSource]);
   const categoryStats = useMemo(() => {
     const counts = new Map<string, number>();
@@ -160,7 +205,7 @@ export default function StockRadarPage() {
     return () => { active = false; };
   }, [t]);
 
-  async function submit(values: StockRadarPayload) {
+  const submit = useCallback(async (values: StockRadarPayload) => {
     setLoading(true);
     setError(null);
     try {
@@ -192,7 +237,42 @@ export default function StockRadarPage() {
     } finally {
       setLoading(false);
     }
-  }
+  }, [factorByName, t]);
+
+  useEffect(() => {
+    const searchKey = typeof window === "undefined" ? "" : window.location.search;
+    if (initializedSearchRef.current === searchKey) return;
+    const defaults = readRadarDefaults(new URLSearchParams(searchKey));
+    if (!defaults) return;
+    initializedSearchRef.current = searchKey;
+
+    const nextValues: StockRadarPayload = {
+      provider_uri: defaults.provider === "us" ? DEFAULT_US_PROVIDER_URI : DEFAULT_PROVIDER_URI,
+      universe: defaults.universe,
+      instrument_limit: defaults.instrumentLimit,
+      topn: defaults.topn,
+      min_factor_count: 1,
+      winsorize_q: 0.01,
+      min_score: null,
+      start_date: null,
+      end_date: null,
+      asof_date: null,
+      factors: presetFactors(defaults.preset),
+    };
+
+    setProviderPreset(defaults.provider);
+    setAssetQuery(defaults.asset);
+    setEntryContext(defaults.source === "dashboard" ? t("已从市场看板接入，预设和候选池已自动带入。", "Connected from Dashboard with preset candidate screening.") : "");
+    form.setFieldsValue(nextValues as any);
+
+    if (!defaults.autoRun) return;
+    setError(null);
+    setResult(buildDemoStockRadar(nextValues));
+    const timer = window.setTimeout(() => {
+      void submit(nextValues);
+    }, 80);
+    return () => window.clearTimeout(timer);
+  }, [form, submit, t]);
 
   function applyProviderPreset(next: ProviderPreset) {
     setProviderPreset(next);
@@ -243,11 +323,17 @@ export default function StockRadarPage() {
       const meta = resultFactorMeta.get(key);
       return <div key={key} className={styles.breakdownCard}>
         <div className={styles.breakdownHead}><Typography.Text strong>{shortFactorName(meta?.factor_name || key)}</Typography.Text><Tag>{categoryLabel(meta?.category, language)}</Tag></div>
-        <Typography.Text className={styles.breakdownExpression} ellipsis={{ tooltip: meta?.expression }}>{meta?.expression || factorDisplayName(meta)}</Typography.Text>
-        <div className={styles.breakdownStats}><span>{t("原值", "Raw")}: {formatNumber(record.factor_values[key])}</span><span>Z: {formatNumber(record.factor_scores[key])}</span><span>{t("贡献", "Contribution")}: {formatNumber(record.factor_contributions?.[key])}</span><span>{t("分位", "Rank pct")}: {formatPercent(record.factor_ranks[key])}</span></div>
+        <Typography.Text className={styles.breakdownExpression} ellipsis={{ tooltip: advancedMode ? meta?.expression : undefined }}>{advancedMode ? (meta?.expression || factorDisplayName(meta)) : factorDisplayName(meta)}</Typography.Text>
+        {!advancedMode ? <Progress percent={Math.min(100, Math.abs(Number(record.factor_contributions?.[key] || 0)) * 100)} showInfo={false} size="small" strokeColor={Number(record.factor_contributions?.[key] || 0) >= 0 ? "#0f9f8f" : "#ef4444"} /> : null}
+        <div className={styles.breakdownStats}>
+          {advancedMode ? <span>{t("原值", "Raw")}: {formatNumber(record.factor_values[key])}</span> : null}
+          {advancedMode ? <span>Z: {formatNumber(record.factor_scores[key])}</span> : null}
+          <span>{t("贡献", "Contribution")}: {formatNumber(record.factor_contributions?.[key])}</span>
+          <span>{t("分位", "Rank pct")}: {formatPercent(record.factor_ranks[key])}</span>
+        </div>
       </div>;
     })}</div>;
-  }, [factorKeys, language, resultFactorMeta, t]);
+  }, [advancedMode, factorKeys, language, resultFactorMeta, t]);
 
   const columns: ColumnsType<StockRadarItem> = useMemo(() => [
     { title: t("排名", "Rank"), dataIndex: "rank", key: "rank", width: 72, fixed: "left" },
@@ -269,20 +355,21 @@ export default function StockRadarPage() {
     a.href = url; a.download = `stock_radar_${result.universe}_${result.signal_date}.csv`; a.click(); URL.revokeObjectURL(url);
   }
 
-  return <PageContainer title={t("选股雷达", "Stock Radar")} subtitle={t("按 qlib 因子族群构建多因子横截面排序；因子仅使用 signal_date 及以前数据。", "Build cross-sectional rankings with grouped qlib factor families; factors only use data through signal_date.")}>
+  return <PageContainer title={t("选股雷达", "Stock Radar")} subtitle={advancedMode ? t("按 qlib 因子族群构建多因子横截面排序；因子仅使用 signal_date 及以前数据。", "Build cross-sectional rankings with grouped qlib factor families; factors only use data through signal_date.") : t("基于动量、趋势、波动与量价特征筛选候选池，用于辅助研究与风险识别。", "Screen candidates with momentum, trend, volatility, and volume-price features for research support.")}>
     <div className={styles.radarShell}>
-      <section className={styles.hero}><div className={styles.heroContent}><Typography.Title level={1} className={styles.heroTitle}>{t("Qlib 因子分类雷达", "Qlib Factor Taxonomy Radar")}</Typography.Title><Typography.Paragraph className={styles.heroText}>{t("已接入本地 qlib_bin 日频 OHLCV，并按动量、趋势、波动、量能、K线形态、量价相关等族群组织。", "Local qlib_bin daily OHLCV factors are grouped into momentum, trend, volatility, volume, candle shape, channel position, and volume-price families.")}</Typography.Paragraph><Space wrap>{[t("真实 qlib_bin 数据", "Real qlib_bin data"), t("按因子族群筛选", "Grouped taxonomy"), t("展开因子贡献", "Contribution drill-down")].map((tag) => <Tag key={tag} className={styles.heroTag}>{tag}</Tag>)}</Space></div><div className={styles.heroPanel}><div className={styles.radarOrb}><span /></div><div className={styles.heroMetricGrid}><div><Typography.Text className={styles.metricLabel}>{t("可用因子", "Available")}</Typography.Text><Typography.Title level={3} className={styles.metricValue}>{factorSource.length}</Typography.Title></div><div><Typography.Text className={styles.metricLabel}>Qlib Alpha</Typography.Text><Typography.Title level={3} className={styles.metricValue}>{qlibAlphaCount}</Typography.Title></div><div><Typography.Text className={styles.metricLabel}>{t("分类", "Categories")}</Typography.Text><Typography.Title level={3} className={styles.metricValue}>{categoryStats.length}</Typography.Title></div><div><Typography.Text className={styles.metricLabel}>{t("信号日", "Signal date")}</Typography.Text><Typography.Title level={4} className={styles.metricValue}>{result?.signal_date || t("待运行", "Awaiting run")}</Typography.Title></div></div></div></section>
+      <section className={styles.hero}><div className={styles.heroContent}><Typography.Title level={1} className={styles.heroTitle}>{advancedMode ? t("Qlib 因子分类雷达", "Qlib Factor Taxonomy Radar") : t("多因子候选池", "Multi-Factor Candidate Pool")}</Typography.Title><Typography.Paragraph className={styles.heroText}>{advancedMode ? t("已接入本地 qlib_bin 日频 OHLCV，并按动量、趋势、波动、量能、K线形态、量价相关等族群组织。", "Local qlib_bin daily OHLCV factors are grouped into momentum, trend, volatility, volume, candle shape, channel position, and volume-price families.") : t("围绕动量、趋势、波动、量能与价格结构生成候选排序，作为策略生成与回测前的研究输入。", "Ranks candidates across momentum, trend, volatility, volume, and price-structure features before strategy generation and backtesting.")}</Typography.Paragraph><Space wrap>{(advancedMode ? [t("真实 qlib_bin 数据", "Real qlib_bin data"), t("按因子族群筛选", "Grouped taxonomy"), t("展开因子贡献", "Contribution drill-down")] : [t("候选池筛选", "Candidate screening"), t("因子贡献解释", "Factor rationale"), t("回测前研究输入", "Pre-backtest input")]).map((tag) => <Tag key={tag} className={styles.heroTag}>{tag}</Tag>)}</Space></div><div className={styles.heroPanel}><div className={styles.radarOrb}><span /></div><div className={styles.heroMetricGrid}><div><Typography.Text className={styles.metricLabel}>{t("可用因子", "Available")}</Typography.Text><Typography.Title level={3} className={styles.metricValue}>{factorSource.length}</Typography.Title></div><div><Typography.Text className={styles.metricLabel}>{advancedMode ? "Qlib Alpha" : t("候选模型", "Models")}</Typography.Text><Typography.Title level={3} className={styles.metricValue}>{qlibAlphaCount}</Typography.Title></div><div><Typography.Text className={styles.metricLabel}>{t("分类", "Categories")}</Typography.Text><Typography.Title level={3} className={styles.metricValue}>{categoryStats.length}</Typography.Title></div><div><Typography.Text className={styles.metricLabel}>{advancedMode ? t("信号日", "Signal date") : t("排序日期", "Ranking date")}</Typography.Text><Typography.Title level={4} className={styles.metricValue}>{result?.signal_date || t("待运行", "Awaiting run")}</Typography.Title></div></div></div></section>
       <Card className={styles.taxonomyCard} title={t("因子分类", "Factor Categories")}><div className={styles.categoryStrip}>{categoryStats.map(([category, count]) => <div key={category} className={styles.categoryPill}><span>{categoryLabel(category, language)}</span><strong>{count}</strong></div>)}</div></Card>
+      {entryContext ? <Alert type="info" showIcon message={entryContext} description={t("可以直接查看候选结果，也可以调整因子组合后重新运行。", "Review the generated candidates or adjust the factor mix and run again.")} /> : null}
       {result?.data_health?.blocking_status === "WARN" ? <Alert type="warning" showIcon message={t("数据新鲜度提示", "Data freshness warning")} description={result.data_health.message || result.timing_note} /> : null}
       <Row gutter={[18, 18]}><Col span={24}><Card className={styles.controlCard} title={<span className={styles.cardTitle}>{t("雷达控制台", "Radar Controls")}</span>}><Form form={form} layout="vertical" onFinish={submit} initialValues={{ provider_uri: DEFAULT_PROVIDER_URI, universe: "csi300", instrument_limit: 300, topn: 50, min_factor_count: 1, winsorize_q: 0.01, factors: presetFactors("momentum") }}>
-        <Row gutter={12}><Col xs={24} md={8} xl={4}><Form.Item label={t("市场预设", "Market Preset")}><Select value={providerPreset} onChange={applyProviderPreset} options={[{ label: t("A股 qlib", "CN qlib"), value: "cn" }, { label: t("美股 qlib", "US qlib"), value: "us" }]} /></Form.Item></Col><Col xs={24} md={16} xl={8}><Form.Item label={t("Qlib 数据路径", "Qlib Provider URI")} name="provider_uri" rules={[{ required: true, message: t("请输入 provider 路径", "Provider path is required") }]}><Input /></Form.Item></Col><Col xs={12} md={6} xl={4}><Form.Item label={t("股票池", "Universe")} name="universe" rules={[{ required: true }]}><Select options={[{ label: t("沪深300", "CSI 300"), value: "csi300" }, { label: t("中证500", "CSI 500"), value: "csi500" }, { label: t("中证100", "CSI 100"), value: "csi100" }, { label: "S&P 500", value: "sp500" }, { label: "Nasdaq 100", value: "nasdaq100" }, { label: t("全部标的", "All instruments"), value: "all" }]} /></Form.Item></Col><Col xs={12} md={6} xl={3}><Form.Item label={t("标的上限", "Instrument Limit")} name="instrument_limit"><InputNumber min={1} max={6000} style={{ width: "100%" }} /></Form.Item></Col><Col xs={12} md={6} xl={2}><Form.Item label="TopN" name="topn"><InputNumber min={1} max={1000} style={{ width: "100%" }} /></Form.Item></Col><Col xs={12} md={6} xl={3}><Form.Item label={t("最低综合分", "Min Score")} name="min_score"><InputNumber step={0.1} style={{ width: "100%" }} placeholder={t("可选", "optional")} /></Form.Item></Col></Row>
-        {providerPreset === "us" ? <Alert className={styles.providerNote} type="info" showIcon message={t("当前 US qlib 为本地维护数据", "Current US qlib is locally maintained")} description={t("本地 US provider 已包含 all、sp500、nasdaq100 股票池；实际新鲜度以 Data Maintenance 审计为准。", "The local US provider includes all, sp500, and nasdaq100 universes; use the Data Maintenance audit as the freshness source of truth.")} /> : null}
+        <Row gutter={12}><Col xs={24} md={8} xl={advancedMode ? 4 : 5}><Form.Item label={t("市场预设", "Market Preset")}><Select value={providerPreset} onChange={applyProviderPreset} options={[{ label: advancedMode ? t("A股 qlib", "CN qlib") : t("A股市场", "CN market"), value: "cn" }, { label: advancedMode ? t("美股 qlib", "US qlib") : t("美股市场", "US market"), value: "us" }]} /></Form.Item></Col>{advancedMode ? <Col xs={24} md={16} xl={8}><Form.Item label={t("Qlib 数据路径", "Qlib Provider URI")} name="provider_uri" rules={[{ required: true, message: t("请输入 provider 路径", "Provider path is required") }]}><Input /></Form.Item></Col> : null}<Col xs={12} md={6} xl={advancedMode ? 4 : 5}><Form.Item label={t("股票池", "Universe")} name="universe" rules={[{ required: true }]}><Select options={[{ label: t("沪深300", "CSI 300"), value: "csi300" }, { label: t("中证500", "CSI 500"), value: "csi500" }, { label: t("中证100", "CSI 100"), value: "csi100" }, { label: "S&P 500", value: "sp500" }, { label: "Nasdaq 100", value: "nasdaq100" }, { label: t("全部标的", "All instruments"), value: "all" }]} /></Form.Item></Col><Col xs={12} md={6} xl={advancedMode ? 3 : 4}><Form.Item label={t("标的上限", "Instrument Limit")} name="instrument_limit"><InputNumber min={1} max={6000} style={{ width: "100%" }} /></Form.Item></Col><Col xs={12} md={6} xl={advancedMode ? 2 : 4}><Form.Item label={advancedMode ? "TopN" : t("返回数量", "Return count")} name="topn"><InputNumber min={1} max={1000} style={{ width: "100%" }} /></Form.Item></Col><Col xs={12} md={6} xl={advancedMode ? 3 : 5}><Form.Item label={t("最低综合分", "Min Score")} name="min_score"><InputNumber step={0.1} style={{ width: "100%" }} placeholder={t("可选", "optional")} /></Form.Item></Col></Row>
+        {providerPreset === "us" ? <Alert className={styles.providerNote} type="info" showIcon message={advancedMode ? t("当前 US qlib 为本地维护数据", "Current US qlib is locally maintained") : t("已切换到美股候选池", "US candidate pool selected")} description={advancedMode ? t("本地 US provider 已包含 all、sp500、nasdaq100 股票池；实际新鲜度以 Data Maintenance 审计为准。", "The local US provider includes all, sp500, and nasdaq100 universes; use the Data Maintenance audit as the freshness source of truth.") : t("可选择 S&P 500、Nasdaq 100 或全部标的进行候选筛选。", "Use S&P 500, Nasdaq 100, or all instruments for candidate screening.")} /> : null}
         <Row gutter={12}><Col xs={24} md={12} xl={6}><Form.Item label={t("开始日期", "Start Date")} name="start_date"><Input placeholder="YYYY-MM-DD" /></Form.Item></Col><Col xs={24} md={12} xl={6}><Form.Item label={t("结束日期", "End Date")} name="end_date"><Input placeholder="YYYY-MM-DD" /></Form.Item></Col><Col xs={24} md={12} xl={6}><Form.Item label={t("截至日期", "As-of Date")} name="asof_date"><Input placeholder="YYYY-MM-DD" /></Form.Item></Col><Col xs={24} md={12} xl={6}><Form.Item label={t("去极值分位", "Winsorize Q")} name="winsorize_q"><InputNumber min={0} max={0.25} step={0.005} style={{ width: "100%" }} /></Form.Item></Col></Row>
-        <Row gutter={12}><Col xs={24} lg={7} xl={6}><Form.Item label={t("最少有效因子数", "Min Factor Count")} name="min_factor_count" tooltip={t("股票至少要有这么多个有效因子值才进入排名。", "A stock must have at least this many valid factor values.")}><InputNumber min={1} max={20} style={{ width: "100%" }} /></Form.Item></Col><Col xs={24} lg={17} xl={18}>{factorLoadError ? <Alert className={styles.factorStatus} type="warning" showIcon message={t("因子元数据加载失败，已使用备用选项。", "Factor metadata load failed; using fallback options.")} description={factorLoadError} /> : <Alert className={styles.factorStatus} type="success" showIcon message={t(`${factorSource.length} 个因子可用${loadingFactors ? "（加载中...）" : ""}`, `${factorSource.length} factors available${loadingFactors ? " (loading...)" : ""}`)} description={t("分类信息来自后端 factor registry；Qlib 因子由本地 OHLCV 日频数据计算。", "Categories come from the backend registry; Qlib factors are computed from local daily OHLCV data.")} />}</Col></Row>
+        <Row gutter={12}><Col xs={24} lg={7} xl={6}><Form.Item label={t("最少有效因子数", "Min Factor Count")} name="min_factor_count" tooltip={t("股票至少要有这么多个有效因子值才进入排名。", "A stock must have at least this many valid factor values.")}><InputNumber min={1} max={20} style={{ width: "100%" }} /></Form.Item></Col><Col xs={24} lg={17} xl={18}>{factorLoadError ? <Alert className={styles.factorStatus} type="warning" showIcon message={t("因子信息暂未完整加载，已使用备用选项。", "Factor metadata is temporarily incomplete; fallback options are available.")} description={advancedMode ? factorLoadError : t("可先继续使用内置因子组合，稍后刷新因子库。", "You can continue with built-in factor presets and refresh the library later.")} /> : <Alert className={styles.factorStatus} type="success" showIcon message={t(`${factorSource.length} 个因子可用${loadingFactors ? "（加载中...）" : ""}`, `${factorSource.length} factors available${loadingFactors ? " (loading...)" : ""}`)} description={advancedMode ? t("分类信息来自后端 factor registry；Qlib 因子由本地 OHLCV 日频数据计算。", "Categories come from the backend registry; Qlib factors are computed from local daily OHLCV data.") : t("因子库已就绪，可用于候选池排序与贡献解释。", "The factor library is ready for candidate ranking and contribution review.")} />}</Col></Row>
         <Divider titlePlacement="left">{t("因子组合", "Factor Combination")}</Divider><div className={styles.presetBar}><Typography.Text strong>{t("快速组合", "Quick presets")}</Typography.Text><Space wrap>{([{ key: "momentum", cn: "动量增强", en: "Momentum" }, { key: "trend", cn: "趋势确认", en: "Trend" }, { key: "risk", cn: "低波筛选", en: "Low-vol" }, { key: "volume", cn: "量价配合", en: "Volume-price" }] as const).map((preset) => <Button key={preset.key} size="small" onClick={() => form.setFieldValue("factors", presetFactors(preset.key))}>{t(preset.cn, preset.en)}</Button>)}</Space></div>
-        <Form.List name="factors">{(fields, { add, remove }) => <Space direction="vertical" style={{ width: "100%" }} size={8}>{fields.map(({ key, name }) => <Row gutter={12} key={key} align="top" className={styles.factorRow}><Col xs={24} xl={9}><Form.Item label={t("因子", "Factor")} name={[name, "factor_name"]} rules={[{ required: true }]}><Select showSearch loading={loadingFactors} optionFilterProp="searchText" options={factorOptions} placeholder={t("选择因子", "Select a factor")} /></Form.Item><Form.Item noStyle shouldUpdate>{({ getFieldValue }) => { const factorName = getFieldValue(["factors", name, "factor_name"]); const description = getFactorDescription(factorName, factorByName); const factor = factorByName.get(factorName); return description ? <div className={styles.factorMetaBlock}><Tag>{categoryLabel(factor?.category, language)}</Tag><Typography.Paragraph type="secondary" className={styles.factorDescription} ellipsis={{ rows: 2, expandable: true }}>{description}</Typography.Paragraph></div> : null; }}</Form.Item></Col><Form.Item noStyle shouldUpdate>{({ getFieldValue }) => hasNParam(getFieldValue(["factors", name, "factor_name"]), factorByName) ? <Col xs={12} md={6} xl={4}><Form.Item label="N" name={[name, "params", "n"]}><InputNumber min={2} max={252} style={{ width: "100%" }} /></Form.Item></Col> : <Col xs={12} md={6} xl={4}><Form.Item label={t("参数", "Params")}><Typography.Text type="secondary">{t("固定表达式", "Fixed expression")}</Typography.Text></Form.Item></Col>}</Form.Item><Col xs={12} md={6} xl={4}><Form.Item label={t("权重", "Weight")} name={[name, "weight"]}><InputNumber step={0.1} style={{ width: "100%" }} /></Form.Item></Col><Col xs={12} md={6} xl={4}><Form.Item label={t("方向", "Direction")} name={[name, "direction"]}><Select options={[{ label: t("高值更好", "High is good"), value: "positive" }, { label: t("低值更好", "Low is good"), value: "negative" }]} /></Form.Item></Col><Col xs={24} xl={3}><Button danger onClick={() => remove(name)} disabled={fields.length <= 1} className={styles.removeButton}>{t("删除", "Remove")}</Button></Col></Row>)}<Button onClick={() => add({ factor_name: "QLIB_ALPHA_ROC20_V1", params: {}, weight: 1, direction: "positive" })}>{t("添加因子", "Add Factor")}</Button></Space>}</Form.List>
+        <Form.List name="factors">{(fields, { add, remove }) => <Space direction="vertical" style={{ width: "100%" }} size={8}>{fields.map(({ key, name }) => <Row gutter={12} key={key} align="top" className={styles.factorRow}><Col xs={24} xl={9}><Form.Item label={t("因子", "Factor")} name={[name, "factor_name"]} rules={[{ required: true }]}><Select showSearch loading={loadingFactors} optionFilterProp="searchText" options={factorOptions} placeholder={t("选择因子", "Select a factor")} /></Form.Item><Form.Item noStyle shouldUpdate>{({ getFieldValue }) => { const factorName = getFieldValue(["factors", name, "factor_name"]); const description = getFactorDescription(factorName, factorByName, language, advancedMode); const factor = factorByName.get(factorName); return description ? <div className={styles.factorMetaBlock}><Tag>{categoryLabel(factor?.category, language)}</Tag><Typography.Paragraph type="secondary" className={styles.factorDescription} ellipsis={{ rows: 2, expandable: true }}>{description}</Typography.Paragraph></div> : null; }}</Form.Item></Col><Form.Item noStyle shouldUpdate>{({ getFieldValue }) => hasNParam(getFieldValue(["factors", name, "factor_name"]), factorByName) ? <Col xs={12} md={6} xl={4}><Form.Item label="N" name={[name, "params", "n"]}><InputNumber min={2} max={252} style={{ width: "100%" }} /></Form.Item></Col> : <Col xs={12} md={6} xl={4}><Form.Item label={t("参数", "Params")}><Typography.Text type="secondary">{advancedMode ? t("固定表达式", "Fixed expression") : t("固定规则", "Fixed rule")}</Typography.Text></Form.Item></Col>}</Form.Item><Col xs={12} md={6} xl={4}><Form.Item label={t("权重", "Weight")} name={[name, "weight"]}><InputNumber step={0.1} style={{ width: "100%" }} /></Form.Item></Col><Col xs={12} md={6} xl={4}><Form.Item label={t("方向", "Direction")} name={[name, "direction"]}><Select options={[{ label: t("高值更好", "High is good"), value: "positive" }, { label: t("低值更好", "Low is good"), value: "negative" }]} /></Form.Item></Col><Col xs={24} xl={3}><Button danger onClick={() => remove(name)} disabled={fields.length <= 1} className={styles.removeButton}>{t("删除", "Remove")}</Button></Col></Row>)}<Button onClick={() => add({ factor_name: "QLIB_ALPHA_ROC20_V1", params: {}, weight: 1, direction: "positive" })}>{t("添加因子", "Add Factor")}</Button></Space>}</Form.List>
         <Divider /><Space wrap><Button type="primary" htmlType="submit" loading={loading} className={styles.runButton}>{t("运行选股雷达", "Run Stock Radar")}</Button><Typography.Text type="secondary">{t("排名在 signal_date 形成；执行应等到下一 qlib 交易日。", "Ranking is formed on signal_date; execution should wait until the next qlib trading day.")}</Typography.Text></Space>
-      </Form></Card></Col><Col span={24}><Card className={styles.resultCard} title={t("雷达结果", "Radar Results")} extra={<Space><Input.Search placeholder={t("筛选代码", "Filter code")} allowClear onChange={(event) => setAssetQuery(event.target.value)} style={{ width: 220 }} /><Button onClick={exportCsv} disabled={!result || rows.length === 0}>{t("导出 CSV", "Export CSV")}</Button></Space>}>{error ? <Alert type="error" showIcon style={{ marginBottom: 12 }} message={t("选股雷达请求失败", "Stock radar request failed")} description={error} /> : null}{result ? <Space direction="vertical" style={{ width: "100%" }} size={12}><Alert className={styles.resultSummary} type="info" showIcon message={t(`股票池 ${result.universe}，signal_date ${result.signal_date}，trade_from ${result.effective_trade_date}，打分前 ${result.row_count_before_score_filter} 只股票。`, `Universe ${result.universe}, signal_date ${result.signal_date}, trade_from ${result.effective_trade_date}, ${result.row_count_before_score_filter} names before score filter.`)} description={result.timing_note} /><div className={styles.summaryGrid}><div className={styles.summaryTile}><span>{t("当日样本", "Loaded")}</span><strong>{result.row_count_on_signal_date ?? result.row_count_before_score_filter}</strong></div><div className={styles.summaryTile}><span>{t("返回标的", "Returned")}</span><strong>{result.row_count}</strong></div><div className={styles.summaryTile}><span>{t("最高得分", "Top score")}</span><strong>{formatNumber(result.items[0]?.score)}</strong></div><div className={styles.summaryTile}><span>{t("平均覆盖", "Avg coverage")}</span><strong>{formatPercent(avgCoverage)}</strong></div></div><Table size="small" rowKey={(record) => `${record.trade_date}-${record.asset_code}`} columns={columns} dataSource={rows} expandable={{ expandedRowRender: renderBreakdown }} scroll={{ x: 1040 }} rowClassName={(_, index) => (index < 3 ? styles.topRankRow : "")} pagination={{ pageSize: 50, showSizeChanger: true }} /></Space> : <Alert type="warning" showIcon message={t("还没有雷达结果", "No radar result yet")} description={t("选择股票池和因子组合后，点击运行选股雷达。", "Choose a universe and factor combination, then run the radar.")} />}</Card></Col></Row>
+      </Form></Card></Col><Col span={24}><Card className={styles.resultCard} title={t("雷达结果", "Radar Results")} extra={<Space><Input.Search placeholder={t("筛选代码", "Filter code")} allowClear onChange={(event) => setAssetQuery(event.target.value)} style={{ width: 220 }} /><Button onClick={exportCsv} disabled={!result || rows.length === 0}>{t("导出 CSV", "Export CSV")}</Button></Space>}>{error ? <Alert type="error" showIcon style={{ marginBottom: 12 }} message={t("选股雷达请求失败", "Stock radar request failed")} description={advancedMode ? error : t("候选池计算暂不可用，可稍后刷新或调整筛选条件。", "Candidate screening is temporarily unavailable; refresh later or adjust filters.")} /> : null}{result ? <Space direction="vertical" style={{ width: "100%" }} size={12}><Alert className={styles.resultSummary} type="info" showIcon message={advancedMode ? t(`股票池 ${result.universe}，signal_date ${result.signal_date}，trade_from ${result.effective_trade_date}，打分前 ${result.row_count_before_score_filter} 只股票。`, `Universe ${result.universe}, signal_date ${result.signal_date}, trade_from ${result.effective_trade_date}, ${result.row_count_before_score_filter} names before score filter.`) : t(`股票池 ${result.universe}，排序日期 ${result.signal_date}，可观察起始日 ${result.effective_trade_date}，初筛 ${result.row_count_before_score_filter} 只股票。`, `Universe ${result.universe}, ranking date ${result.signal_date}, observable from ${result.effective_trade_date}, ${result.row_count_before_score_filter} names before score filter.`)} description={advancedMode ? result.timing_note : t("结果用于辅助研究与风险识别，不构成投资建议。", "Results support research and risk review; not financial advice.")} /><div className={styles.summaryGrid}><div className={styles.summaryTile}><span>{t("当日样本", "Loaded")}</span><strong>{result.row_count_on_signal_date ?? result.row_count_before_score_filter}</strong></div><div className={styles.summaryTile}><span>{t("返回标的", "Returned")}</span><strong>{result.row_count}</strong></div><div className={styles.summaryTile}><span>{t("最高得分", "Top score")}</span><strong>{formatNumber(result.items[0]?.score)}</strong></div><div className={styles.summaryTile}><span>{t("平均覆盖", "Avg coverage")}</span><strong>{formatPercent(avgCoverage)}</strong></div></div><Table size="small" rowKey={(record) => `${record.trade_date}-${record.asset_code}`} columns={columns} dataSource={rows} expandable={{ expandedRowRender: renderBreakdown }} scroll={{ x: 1040 }} rowClassName={(_, index) => (index < 3 ? styles.topRankRow : "")} pagination={{ pageSize: 50, showSizeChanger: true }} /></Space> : <Alert type="warning" showIcon message={t("还没有雷达结果", "No radar result yet")} description={t("选择股票池和因子组合后，点击运行选股雷达。", "Choose a universe and factor combination, then run the radar.")} />}</Card></Col></Row>
     </div>
   </PageContainer>;
 }

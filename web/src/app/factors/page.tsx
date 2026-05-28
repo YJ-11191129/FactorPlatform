@@ -28,10 +28,22 @@ function qualityColor(status?: string | null): string {
 }
 
 function explainApiError(e: any): string {
+  if (e?.status === 401) {
+    return "API key 不匹配：当前 X-API-Key 未被后端接受。请到 Settings 保存正确 key，或重启 Web 让 NEXT_PUBLIC_API_KEY 与 BACKEND_ORIGIN 对齐。";
+  }
+  if (e?.status === 403) {
+    return "当前 API key 权限不足：该操作需要更高角色，请使用 operator/admin key。";
+  }
+  if (e?.status === 504) {
+    const target = e?.detail?.target ? ` Target: ${e.detail.target}` : "";
+    return `后端代理超时或不可达，请确认 BACKEND_ORIGIN 指向正在运行的 API。${target}`;
+  }
   const detail = e?.detail?.detail;
   if (detail && typeof detail === "object") {
     return detail.message || detail.status || e?.message || "Request failed";
   }
+  if (typeof e?.detail === "object" && e.detail?.detail) return String(e.detail.detail);
+  if (typeof e?.detail === "string") return e.detail;
   return e?.message || "Request failed";
 }
 
@@ -53,21 +65,40 @@ export default function FactorsPage() {
   const [qualityRunId, setQualityRunId] = useState("");
   const [qualityReport, setQualityReport] = useState<ResearchQualityReport | null>(null);
   const [qualityError, setQualityError] = useState("");
+  const [loadError, setLoadError] = useState("");
+  const [qlibError, setQlibError] = useState("");
+  const [miningRunsError, setMiningRunsError] = useState("");
 
   async function load() {
     setState("loading");
+    setLoadError("");
+    setQlibError("");
+    setMiningRunsError("");
     try {
-      const [res, status, runs] = await Promise.all([
-        listFactors(),
-        getQlibStatus().catch(() => null),
-        listQlibFactorMiningRuns(20).catch(() => []),
-      ]);
+      const res = await listFactors();
       setData(res);
-      setQlibStatus(status);
-      setMiningRuns(runs);
       setState("ready");
-    } catch {
+    } catch (e: any) {
+      setLoadError(explainApiError(e));
       setState("error");
+      return;
+    }
+
+    const [statusResult, runsResult] = await Promise.allSettled([
+      getQlibStatus(),
+      listQlibFactorMiningRuns(20),
+    ]);
+    if (statusResult.status === "fulfilled") {
+      setQlibStatus(statusResult.value);
+    } else {
+      setQlibStatus(null);
+      setQlibError(explainApiError(statusResult.reason));
+    }
+    if (runsResult.status === "fulfilled") {
+      setMiningRuns(runsResult.value);
+    } else {
+      setMiningRuns([]);
+      setMiningRunsError(explainApiError(runsResult.reason));
     }
   }
 
@@ -259,6 +290,13 @@ export default function FactorsPage() {
     { title: "Message", dataIndex: "message", key: "message" },
   ];
 
+  const qlibReady = qlibStatus?.status === "READY";
+  const qlibDisabledReason =
+    qlibError ||
+    qlibStatus?.notes?.[0] ||
+    (qlibStatus?.status ? `Native qlib is not ready: ${qlibStatus.status}` : "Native qlib readiness has not been checked yet.");
+  const qlibAlertType = qlibError ? "warning" : qlibReady ? "success" : qlibStatus?.status === "DATA_NOT_READY" ? "warning" : "error";
+
   return (
     <PageContainer
       title="Factors"
@@ -266,7 +304,7 @@ export default function FactorsPage() {
       extra={
         <Space>
           <Button disabled>New Factor</Button>
-          <Button type="primary" onClick={() => setMiningOpen(true)}>
+          <Button type="primary" disabled={!qlibReady} title={!qlibReady ? qlibDisabledReason : undefined} onClick={() => setMiningOpen(true)}>
             Batch Mine qlib Factors
           </Button>
         </Space>
@@ -275,7 +313,18 @@ export default function FactorsPage() {
       {state === "loading" ? (
         <Skeleton active paragraph={{ rows: 10 }} />
       ) : state === "error" ? (
-        <ErrorState title="Factor list failed to load" onRetry={load} />
+        <ErrorState
+          title="Factor list failed to load"
+          subtitle={loadError || "Backend factor registry is unavailable."}
+          extra={
+            <Space>
+              <Button type="primary" onClick={load}>
+                Retry
+              </Button>
+              <Button href="/settings">Open Settings</Button>
+            </Space>
+          }
+        />
       ) : filtered.length === 0 ? (
         <EmptyState
           title="No factors match the current filters"
@@ -291,16 +340,17 @@ export default function FactorsPage() {
         <>
           <SectionCard
             title="Native qlib readiness"
-            extra={<Tag color={qlibStatus?.status === "READY" ? "green" : qlibStatus?.status === "DATA_NOT_READY" ? "gold" : "red"}>{qlibStatus?.status || "UNKNOWN"}</Tag>}
+            extra={<Tag color={qlibReady ? "green" : qlibStatus?.status === "DATA_NOT_READY" ? "gold" : qlibError ? "gold" : "red"}>{qlibStatus?.status || (qlibError ? "UNAVAILABLE" : "UNKNOWN")}</Tag>}
           >
             <Alert
               showIcon
-              type={qlibStatus?.status === "READY" ? "success" : qlibStatus?.status === "DATA_NOT_READY" ? "warning" : "error"}
-              message="Batch mining uses native qlib only"
+              type={qlibAlertType}
+              message={qlibReady ? "Native qlib is ready" : "Batch mining is blocked until native qlib is ready"}
               description={
                 <div>
                   <div>Provider: {qlibStatus?.provider_uri || "D:\\mcQlib\\data\\qlib_bin\\cn_data"}</div>
-                  <div>{qlibStatus?.notes?.[0] || "Native qlib readiness gate is checked before batch mining."}</div>
+                  <div>{qlibDisabledReason}</div>
+                  {!qlibReady ? <div>Factor registry remains available; only qlib mining and qlib factor runs are disabled.</div> : null}
                 </div>
               }
             />
@@ -313,6 +363,8 @@ export default function FactorsPage() {
             <FactorTable
               loading={false}
               data={filtered}
+              qlibReady={qlibReady}
+              qlibDisabledReason={qlibDisabledReason}
               onRunDemo={(name) => {
                 setRunFactor(name);
                 setRunMode("demo");
@@ -327,6 +379,15 @@ export default function FactorsPage() {
           </SectionCard>
 
           <SectionCard title="Native qlib factor mining runs" extra={<Tag color="blue">{miningRuns.length}</Tag>}>
+            {miningRunsError ? (
+              <Alert
+                showIcon
+                type="warning"
+                message="Mining run history is unavailable"
+                description={miningRunsError}
+                style={{ marginBottom: 12 }}
+              />
+            ) : null}
             <Table size="small" rowKey={(r) => r.run_id} dataSource={miningRuns} columns={miningColumns} pagination={{ pageSize: 5 }} />
           </SectionCard>
 
@@ -430,4 +491,3 @@ export default function FactorsPage() {
     </PageContainer>
   );
 }
-

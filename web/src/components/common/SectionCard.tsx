@@ -12,9 +12,8 @@ export function SectionCard(props: { title: ReactNode; extra?: ReactNode; childr
       style={{
         borderRadius: "var(--fp-radius)",
         border: "1px solid var(--fp-border)",
-        boxShadow: "var(--fp-shadow)",
-        background:
-          "linear-gradient(180deg, rgba(22, 36, 58, 0.9), rgba(15, 27, 46, 0.96))",
+        boxShadow: "0 12px 30px rgba(15, 23, 42, 0.05)",
+        background: "var(--fp-surface)",
       }}
     >
       {props.children}

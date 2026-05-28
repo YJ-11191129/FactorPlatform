@@ -5,6 +5,10 @@ export type BacktestRunPayload = {
   start_date?: string | null;
   end_date?: string | null;
   universe?: string[] | null;
+  data_source?: string | null;
+  provider_uri?: string | null;
+  qlib_region?: string | null;
+  qlib_universe?: string | null;
   initial_cash: number;
   fee_bps: number;
   use_adj?: boolean;
@@ -29,6 +33,11 @@ export type BacktestSummary = {
   universe_size: number;
   metrics: Record<string, unknown>;
   strategy_spec?: Record<string, unknown>;
+  validation?: Record<string, unknown>;
+  price_data_source?: Record<string, unknown>;
+  execution_model?: Record<string, unknown>;
+  diagnostics?: Record<string, unknown>;
+  data_health?: Record<string, unknown> | null;
   timing_note?: string;
   source?: string;
 };
@@ -36,12 +45,16 @@ export type BacktestSummary = {
 export type EquityPoint = {
   trade_date: string;
   equity: number;
+  gross_ret?: number;
+  turnover?: number;
+  cost?: number;
   net_ret: number;
 };
 
 export type EquityCurve = {
   items: EquityPoint[];
   row_count: number;
+  summary?: BacktestSummary | null;
 };
 
 export type BacktestDataStatus = {
@@ -56,5 +69,9 @@ export type BacktestDataStatus = {
     message?: string;
     status?: string;
     source_id?: string;
+    latest_date?: string;
+    effective_end_date?: string;
+    using_latest_available?: boolean;
+    price_data_source?: Record<string, unknown>;
   } | null;
 };

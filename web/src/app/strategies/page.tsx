@@ -5,29 +5,24 @@ import type { ColumnsType } from "antd/es/table";
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 
+import { BacktestConfigPanel } from "@/components/backtests/BacktestConfigPanel";
+import { StrategyListPanel } from "@/components/backtests/StrategyListPanel";
 import { EmptyState } from "@/components/common/EmptyState";
 import { ErrorState } from "@/components/common/ErrorState";
 import { MetricCard } from "@/components/common/MetricCard";
 import { SectionCard } from "@/components/common/SectionCard";
-import { BacktestConfigPanel } from "@/components/backtests/BacktestConfigPanel";
-import { StrategyListPanel } from "@/components/backtests/StrategyListPanel";
 import { PageContainer } from "@/components/layout/PageContainer";
 import { getBacktestDataStatus, listBacktests, listStrategies, runBacktest } from "@/lib/api/backtests";
 import { buildQlibPortfolio, generateQlibReport, listQlibFactorMiningRuns, listQlibPortfolios } from "@/lib/api/qlib-research";
-import type { BacktestRunPayload, BacktestRunResult } from "@/types/backtest";
-import type { StrategyInfo } from "@/types/strategy";
-import type { BacktestSummary } from "@/types/backtest";
-import type { BacktestDataStatus } from "@/types/backtest";
+import type { ApiError } from "@/lib/api/client";
+import type { BacktestDataStatus, BacktestRunPayload, BacktestRunResult, BacktestSummary } from "@/types/backtest";
 import type { QlibFactorMiningRun, QlibPortfolio } from "@/types/qlib-research";
+import type { StrategyInfo } from "@/types/strategy";
 
 type LoadState = "loading" | "error" | "ready";
 
-function isAuthError(e: unknown): boolean {
-  return Boolean(e && typeof e === "object" && "status" in e && (e as any).status === 401);
-}
-
-function isForbiddenError(e: unknown): boolean {
-  return Boolean(e && typeof e === "object" && "status" in e && (e as any).status === 403);
+function isApiError(e: unknown, status: number): boolean {
+  return Boolean(e && typeof e === "object" && "status" in e && (e as ApiError).status === status);
 }
 
 function extractErrorMessage(e: unknown): string {
@@ -35,9 +30,32 @@ function extractErrorMessage(e: unknown): string {
   if (typeof e === "string") return e;
   if (typeof e === "object") {
     if ("message" in e && typeof (e as any).message === "string") return (e as any).message;
-    if ("detail" in e && typeof (e as any).detail === "string") return (e as any).detail;
+    const detail = (e as any).detail?.detail || (e as any).detail;
+    if (typeof detail === "string") return detail;
+    if (detail && typeof detail === "object" && typeof detail.message === "string") return detail.message;
   }
-  return "回测失败";
+  return "请求失败";
+}
+
+function formatPercent(value: unknown): string {
+  return typeof value === "number" ? `${(value * 100).toFixed(2)}%` : "-";
+}
+
+function formatNumber(value: unknown, digits = 2): string {
+  return typeof value === "number" ? value.toFixed(digits) : "-";
+}
+
+function sourceLabel(summary: BacktestSummary | null | undefined): string {
+  const source = summary?.price_data_source || {};
+  const kind = String(source.kind || "-");
+  const region = source.region ? ` / ${String(source.region).toUpperCase()}` : "";
+  const sourceId = source.source_id ? ` / ${String(source.source_id)}` : "";
+  return `${kind}${region}${sourceId}`;
+}
+
+function dataHealthWarning(dataHealth: Record<string, unknown> | null | undefined): string | null {
+  if (!dataHealth || dataHealth.blocking_status === "OK") return null;
+  return typeof dataHealth.message === "string" && dataHealth.message ? dataHealth.message : "数据新鲜度需要确认";
 }
 
 export default function StrategiesPage() {
@@ -58,22 +76,18 @@ export default function StrategiesPage() {
   async function load() {
     setState("loading");
     try {
-      const [data, bt, mines, ports] = await Promise.all([
+      const [strategyRows, recentBacktests, miningRows, portfolioRows] = await Promise.all([
         listStrategies(),
         listBacktests(50),
         listQlibFactorMiningRuns(20).catch(() => []),
         listQlibPortfolios(20).catch(() => []),
       ]);
-      setStrategies(data);
-      setSelected((prev) => (prev ? data.find((s) => s.strategy_id === prev.strategy_id) || null : null));
-      setBacktests(bt);
-      setMiningRuns(mines);
-      setPortfolios(ports);
-      try {
-        setDataStatus(await getBacktestDataStatus());
-      } catch {
-
-      }
+      setStrategies(strategyRows);
+      setSelected((prev) => (prev ? strategyRows.find((s) => s.strategy_id === prev.strategy_id) || null : strategyRows[0] || null));
+      setBacktests(recentBacktests);
+      setMiningRuns(miningRows);
+      setPortfolios(portfolioRows);
+      setDataStatus(await getBacktestDataStatus().catch(() => null));
       setState("ready");
     } catch {
       setState("error");
@@ -85,10 +99,15 @@ export default function StrategiesPage() {
   }, []);
 
   const stats = useMemo(() => {
-    const total = strategies.length;
     const owners = new Set(strategies.map((s) => s.owner).filter(Boolean)).size;
-    return { total, owners };
-  }, [strategies]);
+    const latest = backtests[0];
+    return {
+      total: strategies.length,
+      owners,
+      recent: backtests.length,
+      latestReturn: latest ? formatPercent(latest.metrics?.total_return) : "-",
+    };
+  }, [strategies, backtests]);
 
   async function onRun(payload: BacktestRunPayload) {
     setRunning(true);
@@ -105,17 +124,16 @@ export default function StrategiesPage() {
           </Space>
         ),
       });
-      try {
-        const bt = await listBacktests(50);
-        setBacktests(bt);
-      } catch {
-
-      }
+      const warning = dataHealthWarning(res.data_health || (res.summary.data_health as Record<string, unknown> | null | undefined));
+      if (warning) message.warning(warning, 6);
+      setBacktests(await listBacktests(50));
     } catch (e) {
-      if (isAuthError(e)) {
-        message.error("缺少 API Key：请到 Settings 页面配置。");
-      } else if (isForbiddenError(e)) {
-        message.error("权限不足：运行回测需要 operator/admin（本地可用 LOCAL_ADMIN_KEY）。");
+      if (isApiError(e, 401)) {
+        message.error("API key 不匹配：请到 Settings 更新 FP_API_KEY，或重启服务加载正确环境。");
+      } else if (isApiError(e, 403)) {
+        message.error("权限不足：运行回测需要 operator/admin，本地可使用 LOCAL_ADMIN_KEY。");
+      } else if (isApiError(e, 423)) {
+        message.error("当前是 Demo fallback 只读模式，不能运行真实回测。");
       } else {
         message.error(extractErrorMessage(e));
       }
@@ -124,30 +142,24 @@ export default function StrategiesPage() {
     }
   }
 
-  function explainApiError(e: any): string {
-    const detail = e?.detail?.detail;
-    if (detail && typeof detail === "object") return detail.message || detail.status || e?.message || "Request failed";
-    return e?.message || "Request failed";
-  }
-
   async function onBuildPortfolio(values: any) {
     setBuildingPortfolio(true);
     try {
-      const selected = String(values.selected_factors || "")
+      const selectedFactors = String(values.selected_factors || "")
         .split(",")
         .map((x) => x.trim())
         .filter(Boolean);
       const res = await buildQlibPortfolio({
         mining_run_id: values.mining_run_id,
-        selected_factors: selected.length ? selected : null,
+        selected_factors: selectedFactors.length ? selectedFactors : null,
         weighting_method: values.weighting_method || "equal",
         top_n: Number(values.top_n || 5),
         long_top_n: Number(values.long_top_n || 30),
       });
-      message.success(`Portfolio built: ${res.portfolio_id}`);
+      message.success(`组合已生成：${res.portfolio_id}`);
       setPortfolios(await listQlibPortfolios(20));
-    } catch (e: any) {
-      message.error(explainApiError(e));
+    } catch (e) {
+      message.error(extractErrorMessage(e));
     } finally {
       setBuildingPortfolio(false);
     }
@@ -167,10 +179,10 @@ export default function StrategiesPage() {
         use_adj: true,
       });
       setLastRun(res);
-      message.success("Portfolio backtest completed");
+      message.success("组合回测完成");
       setBacktests(await listBacktests(50));
-    } catch (e: any) {
-      message.error(explainApiError(e));
+    } catch (e) {
+      message.error(extractErrorMessage(e));
     } finally {
       setRunningPortfolioId(null);
     }
@@ -185,9 +197,9 @@ export default function StrategiesPage() {
         portfolio_id: portfolioId,
         backtest_id: latestBacktest?.backtest_id,
       });
-      message.success(`Report generated: ${String(res.html_path || "")}`);
-    } catch (e: any) {
-      message.error(explainApiError(e));
+      message.success(`报告已生成：${String(res.html_path || "")}`);
+    } catch (e) {
+      message.error(extractErrorMessage(e));
     } finally {
       setReportPortfolioId(null);
     }
@@ -198,7 +210,7 @@ export default function StrategiesPage() {
       title: "Backtest",
       dataIndex: "backtest_id",
       key: "backtest_id",
-      width: 220,
+      width: 230,
       render: (v: string) => <Typography.Text code>{v}</Typography.Text>,
     },
     {
@@ -217,11 +229,24 @@ export default function StrategiesPage() {
       ),
     },
     {
+      title: "数据源",
+      key: "source",
+      width: 180,
+      render: (_, r) => <Tag>{sourceLabel(r)}</Tag>,
+    },
+    {
       title: "总收益",
       dataIndex: ["metrics", "total_return"],
       key: "total_return",
-      width: 120,
-      render: (v: unknown) => (typeof v === "number" ? `${(v * 100).toFixed(2)}%` : "-"),
+      width: 110,
+      render: formatPercent,
+    },
+    {
+      title: "Sharpe",
+      dataIndex: ["metrics", "sharpe"],
+      key: "sharpe",
+      width: 90,
+      render: (v) => formatNumber(v),
     },
     {
       title: "创建时间",
@@ -242,191 +267,202 @@ export default function StrategiesPage() {
       title: "Factors",
       dataIndex: "selected_factors",
       key: "selected_factors",
-      render: (v: string[]) => <Typography.Text>{v.slice(0, 3).join(", ")}{v.length > 3 ? "..." : ""}</Typography.Text>,
+      render: (v: string[]) => <Typography.Text>{(v || []).slice(0, 3).join(", ")}{v?.length > 3 ? "..." : ""}</Typography.Text>,
     },
+    { title: "Signals", dataIndex: "signal_count", key: "signal_count", width: 90 },
     {
-      title: "Signals",
-      dataIndex: "signal_count",
-      key: "signal_count",
-      width: 90,
+      title: "质量状态",
+      dataIndex: "promotion_status",
+      key: "promotion_status",
+      width: 130,
+      render: (v: string) => <Tag color={v === "PROMOTED" ? "green" : "gold"}>{v || "REVIEW"}</Tag>,
     },
     {
       title: "Actions",
       key: "actions",
-      width: 220,
+      width: 210,
       render: (_, r) => (
         <Space>
           <Button size="small" loading={runningPortfolioId === r.portfolio_id} onClick={() => onRunPortfolio(r.portfolio_id)}>
-            Backtest
+            回测
           </Button>
           <Button size="small" loading={reportPortfolioId === r.portfolio_id} onClick={() => onPortfolioReport(r.portfolio_id)}>
-            Report
+            报告
           </Button>
         </Space>
       ),
     },
   ];
 
+  const lastSummary = lastRun?.summary as BacktestSummary | undefined;
+  const lastMetrics = (lastSummary?.metrics || {}) as Record<string, unknown>;
+  const latestDataHealthWarning = dataHealthWarning(lastRun?.data_health || lastSummary?.data_health);
+
   return (
-    <PageContainer title="策略库回测" subtitle="从策略库选择策略 → 运行回测 → 查看净值曲线">
+    <PageContainer title="回测工作台" subtitle="从策略库或 qlib 因子组合发起回测，统一记录数据源、时序假设、成本与风险指标。">
       {state === "loading" ? (
         <Skeleton active paragraph={{ rows: 10 }} />
       ) : state === "error" ? (
-        <ErrorState title="策略列表加载失败" onRetry={load} />
+        <ErrorState title="策略与回测数据加载失败" onRetry={load} />
       ) : strategies.length === 0 ? (
         <EmptyState title="暂无策略" actionText="重试" onAction={load} />
       ) : (
         <>
           <Row gutter={[16, 16]}>
-            <Col span={6}>
+            <Col xs={12} lg={6}>
               <MetricCard title="策略数" value={stats.total} />
             </Col>
-            <Col span={6}>
+            <Col xs={12} lg={6}>
               <MetricCard title="Owner 数" value={stats.owners} />
             </Col>
-            <Col span={12}>
-              <SectionCard title="提示">
-                <Typography.Paragraph style={{ marginBottom: 0 }} type="secondary">
-                  若接口返回 401，请先到 Settings 保存你的 `X-API-Key`。
-                </Typography.Paragraph>
-                {dataStatus ? (
-                  <Typography.Paragraph style={{ marginTop: 8, marginBottom: 0 }} type="secondary">
-                    回测数据：{dataStatus.start_date} ~ {dataStatus.end_date}，{dataStatus.asset_count} 资产，{dataStatus.row_count} 行
-                  </Typography.Paragraph>
-                ) : null}
-                {dataStatus?.data_health?.blocking_status && dataStatus.data_health.blocking_status !== "OK" ? (
-                  <Alert
-                    style={{ marginTop: 8 }}
-                    type={dataStatus.data_health.blocking_status === "BLOCKED" ? "error" : "warning"}
-                    showIcon
-                    message={dataStatus.data_health.message || "Backtest data freshness warning"}
-                  />
-                ) : null}
-                <Space style={{ marginTop: 8 }}>
-                  <Button size="small" onClick={load}>
-                    刷新
-                  </Button>
-                  <Button size="small" onClick={() => router.push("/settings")}
-                    type="default"
-                  >
-                    打开 Settings
-                  </Button>
-                </Space>
-              </SectionCard>
+            <Col xs={12} lg={6}>
+              <MetricCard title="近期回测" value={stats.recent} />
             </Col>
-          </Row>
-
-          <Row gutter={[16, 16]} style={{ marginTop: 16 }}>
-            <Col span={12}>
-              <StrategyListPanel
-                strategies={strategies}
-                selectedId={selected?.strategy_id}
-                onSelect={(s) => setSelected(s)}
-              />
-            </Col>
-            <Col span={12}>
-              <BacktestConfigPanel strategy={selected} loading={running} onRun={onRun} />
+            <Col xs={12} lg={6}>
+              <MetricCard title="最近总收益" value={stats.latestReturn} />
             </Col>
           </Row>
 
           <div style={{ marginTop: 16 }}>
-            <SectionCard title="Native qlib portfolios">
-              <Form
-                layout="vertical"
-                initialValues={{ weighting_method: "equal", top_n: 5, long_top_n: 30 }}
-                onFinish={onBuildPortfolio}
-              >
+            <SectionCard
+              title="数据与权限状态"
+              extra={
+                <Space>
+                  <Button size="small" onClick={load}>
+                    刷新
+                  </Button>
+                  <Button size="small" onClick={() => router.push("/settings")}>
+                    Settings
+                  </Button>
+                </Space>
+              }
+            >
+              <Space direction="vertical" style={{ width: "100%" }}>
+                <Typography.Text type="secondary">
+                  默认回测数据源是 qlib CN/US；Wind parquet 只作为 fallback。若接口返回 401，请在 Settings 保存正确的 FP_API_KEY。
+                </Typography.Text>
+                {dataStatus ? (
+                  <Typography.Text type="secondary">
+                    Wind fallback: {dataStatus.start_date || "-"} ~ {dataStatus.end_date || "-"}，{dataStatus.asset_count} 资产，{dataStatus.row_count} 行。
+                  </Typography.Text>
+                ) : null}
+                {dataStatus?.data_health?.blocking_status && dataStatus.data_health.blocking_status !== "OK" ? (
+                  <Alert
+                    type={dataStatus.data_health.blocking_status === "BLOCKED" ? "warning" : "info"}
+                    showIcon
+                    message="Wind fallback 数据状态"
+                    description={dataStatus.data_health.message || "Wind fallback freshness warning"}
+                  />
+                ) : null}
+              </Space>
+            </SectionCard>
+          </div>
+
+          <Row gutter={[16, 16]} style={{ marginTop: 16 }}>
+            <Col xs={24} xl={11}>
+              <StrategyListPanel strategies={strategies} selectedId={selected?.strategy_id} onSelect={(s) => setSelected(s)} />
+            </Col>
+            <Col xs={24} xl={13}>
+              <BacktestConfigPanel strategy={selected} loading={running} onRun={onRun} />
+            </Col>
+          </Row>
+
+          {lastRun ? (
+            <div style={{ marginTop: 16 }}>
+              <SectionCard title="最近一次回测">
+                {latestDataHealthWarning ? (
+                  <Alert type="warning" showIcon message="数据新鲜度提示" description={latestDataHealthWarning} style={{ marginBottom: 12 }} />
+                ) : null}
+                <Row gutter={[16, 16]}>
+                  <Col xs={12} lg={4}>
+                    <MetricCard title="总收益" value={formatPercent(lastMetrics.total_return)} />
+                  </Col>
+                  <Col xs={12} lg={4}>
+                    <MetricCard title="年化收益" value={formatPercent(lastMetrics.annual_return)} />
+                  </Col>
+                  <Col xs={12} lg={4}>
+                    <MetricCard title="Sharpe" value={formatNumber(lastMetrics.sharpe)} />
+                  </Col>
+                  <Col xs={12} lg={4}>
+                    <MetricCard title="最大回撤" value={formatPercent(lastMetrics.max_drawdown)} />
+                  </Col>
+                  <Col xs={12} lg={4}>
+                    <MetricCard title="日均换手" value={formatPercent(lastMetrics.avg_daily_turnover)} />
+                  </Col>
+                  <Col xs={12} lg={4}>
+                    <MetricCard title="交易成本" value={formatNumber(lastMetrics.total_transaction_cost, 0)} />
+                  </Col>
+                </Row>
+                <Space style={{ marginTop: 12 }} wrap>
+                  <Typography.Text code>{lastRun.backtest_id}</Typography.Text>
+                  <Tag>{sourceLabel(lastSummary)}</Tag>
+                  <Button size="small" type="primary" onClick={() => router.push(`/backtests/${encodeURIComponent(lastRun.backtest_id)}`)}>
+                    查看结果
+                  </Button>
+                </Space>
+              </SectionCard>
+            </div>
+          ) : null}
+
+          <div style={{ marginTop: 16 }}>
+            <SectionCard title="Native qlib 因子组合">
+              <Form layout="vertical" initialValues={{ weighting_method: "equal", top_n: 5, long_top_n: 30 }} onFinish={onBuildPortfolio}>
                 <Row gutter={12}>
-                  <Col span={8}>
-                    <Form.Item label="Mining run" name="mining_run_id" rules={[{ required: true, message: "Select a mining run" }]}>
-                      <Select
-                        showSearch
-                        placeholder="Select mining run"
-                        options={miningRuns.map((r) => ({ label: r.run_id, value: r.run_id }))}
-                      />
+                  <Col xs={24} lg={8}>
+                    <Form.Item label="Mining run" name="mining_run_id" rules={[{ required: true, message: "请选择一个 mining run" }]}>
+                      <Select showSearch placeholder="Select mining run" options={miningRuns.map((r) => ({ label: r.run_id, value: r.run_id }))} />
                     </Form.Item>
                   </Col>
-                  <Col span={8}>
+                  <Col xs={24} lg={8}>
                     <Form.Item label="Selected factors" name="selected_factors">
-                      <Input placeholder="comma separated; empty uses top_n" />
+                      <Input placeholder="逗号分隔；留空使用 Top N" />
                     </Form.Item>
                   </Col>
-                  <Col span={4}>
+                  <Col xs={12} lg={3}>
                     <Form.Item label="Weighting" name="weighting_method">
                       <Select
                         options={[
                           { label: "Equal", value: "equal" },
-                          { label: "IC weighted", value: "ic_weighted" },
-                          { label: "RankIC weighted", value: "rank_ic_weighted" },
+                          { label: "IC", value: "ic_weighted" },
+                          { label: "RankIC", value: "rank_ic_weighted" },
                         ]}
                       />
                     </Form.Item>
                   </Col>
-                  <Col span={2}>
+                  <Col xs={6} lg={2}>
                     <Form.Item label="Top N" name="top_n">
                       <InputNumber min={1} max={50} style={{ width: "100%" }} />
                     </Form.Item>
                   </Col>
-                  <Col span={2}>
+                  <Col xs={6} lg={3}>
                     <Form.Item label="Hold" name="long_top_n">
                       <InputNumber min={1} max={500} style={{ width: "100%" }} />
                     </Form.Item>
                   </Col>
                 </Row>
                 <Button type="primary" htmlType="submit" loading={buildingPortfolio}>
-                  Build portfolio
+                  生成组合
                 </Button>
               </Form>
               <div style={{ marginTop: 16 }}>
-                <Table
-                  size="small"
-                  rowKey={(r) => r.portfolio_id}
-                  dataSource={portfolios}
-                  columns={portfolioColumns}
-                  pagination={{ pageSize: 5 }}
-                />
+                <Table size="small" rowKey={(r) => r.portfolio_id} dataSource={portfolios} columns={portfolioColumns} pagination={{ pageSize: 5 }} />
               </div>
             </SectionCard>
           </div>
 
           <div style={{ marginTop: 16 }}>
-            <SectionCard title="回测">
-              {lastRun ? (
-                <Row gutter={[16, 16]}>
-                  <Col span={8}>
-                    <MetricCard title="Backtest ID" value={lastRun.backtest_id} />
-                  </Col>
-                  <Col span={8}>
-                    <MetricCard title="Created" value={lastRun.created_at} />
-                  </Col>
-                  <Col span={8}>
-                    <MetricCard
-                      title="查看净值"
-                      value="Open"
-                      onClick={() => router.push(`/backtests/${encodeURIComponent(lastRun.backtest_id)}`)}
-                    />
-                  </Col>
-                </Row>
-              ) : (
-                <Typography.Text type="secondary">尚未运行回测。</Typography.Text>
-              )}
-
-              <div style={{ marginTop: 16 }}>
-                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
-                  <Typography.Text strong>最近回测</Typography.Text>
-                  <Tag color="blue">{backtests.length}</Tag>
-                </div>
-                <Table
-                  size="small"
-                  rowKey={(r) => r.backtest_id}
-                  dataSource={backtests}
-                  columns={backtestColumns}
-                  pagination={{ pageSize: 5 }}
-                  onRow={(record) => ({
-                    onClick: () => router.push(`/backtests/${encodeURIComponent(record.backtest_id)}`),
-                  })}
-                />
-              </div>
+            <SectionCard title="最近回测">
+              <Table
+                size="small"
+                rowKey={(r) => r.backtest_id}
+                dataSource={backtests}
+                columns={backtestColumns}
+                pagination={{ pageSize: 8 }}
+                scroll={{ x: 980 }}
+                onRow={(record) => ({
+                  onClick: () => router.push(`/backtests/${encodeURIComponent(record.backtest_id)}`),
+                })}
+              />
             </SectionCard>
           </div>
         </>

@@ -10,10 +10,8 @@
   padding: 28px;
   border: 1px solid var(--fp-border);
   border-radius: var(--fp-radius-lg);
-  background:
-    radial-gradient(circle at 10% 0%, rgba(56, 189, 248, 0.16), transparent 34%),
-    linear-gradient(135deg, rgba(22, 36, 58, 0.92), rgba(15, 27, 46, 0.9));
-  box-shadow: var(--fp-shadow);
+  background: #ffffff;
+  box-shadow: 0 14px 34px rgba(15, 23, 42, 0.05);
 }
 
 .heroTitle {
@@ -43,7 +41,7 @@
   padding: 16px;
   border: 1px solid var(--fp-border);
   border-radius: var(--fp-radius);
-  background: rgba(15, 27, 46, 0.72);
+  background: #f7fbfb;
 }
 
 .metricGrid span {

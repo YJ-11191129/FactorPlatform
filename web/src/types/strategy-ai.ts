@@ -83,6 +83,10 @@ export type RunAiBacktestPayload = {
   start_date?: string | null;
   end_date?: string | null;
   universe?: string[] | null;
+  data_source?: string | null;
+  qlib_region?: string | null;
+  provider_uri?: string | null;
+  qlib_universe?: string | null;
   initial_cash: number;
   fee_bps?: number | null;
   use_adj?: boolean;

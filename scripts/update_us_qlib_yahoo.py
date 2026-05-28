@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import argparse
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from http.client import IncompleteRead, RemoteDisconnected
 import json
 import math
 import shutil
@@ -40,6 +42,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--offset", type=int, default=0, help="Skip the first N symbols. Useful for batch resume.")
     parser.add_argument("--sleep", type=float, default=0.05, help="Delay between Yahoo requests.")
     parser.add_argument("--retries", type=int, default=4)
+    parser.add_argument("--workers", type=int, default=1, help="Concurrent Yahoo fetch workers. 1 keeps sequential behavior.")
     parser.add_argument("--max-failures", type=int, default=0, help="Stop after N failed symbols. 0 means never stop early.")
     parser.add_argument("--failure-log", type=Path, help="Optional JSON file for failed symbols.")
     parser.add_argument("--backup", action="store_true", help="Create provider backup before writing.")
@@ -69,9 +72,9 @@ def unique_symbols(provider_uri: Path, universes: list[str], explicit: list[str]
 
 
 def yahoo_symbol(symbol: str) -> str:
-    # qlib official US data stores class shares and preferred shares as BRK-B,
-    # BF-A, etc. Yahoo uses the same dash convention.
-    return symbol.strip().upper()
+    # Some qlib instrument files store class shares as BRK.B while Yahoo uses
+    # BRK-B. Keep the provider symbol unchanged on disk and only map the query.
+    return symbol.strip().upper().replace(".", "-")
 
 
 def yahoo_chart_url(symbol: str, start: date, end: date) -> str:
@@ -146,7 +149,7 @@ def fetch_yahoo(symbol: str, start: date, end: date, retries: int) -> pd.DataFra
                 raise RuntimeError(f"Yahoo symbol not found or delisted: HTTP {exc.code}") from exc
             last_error = exc
             time.sleep(min(2 * attempt, 8))
-        except (URLError, TimeoutError, RuntimeError, json.JSONDecodeError) as exc:
+        except (URLError, TimeoutError, RuntimeError, json.JSONDecodeError, IncompleteRead, RemoteDisconnected) as exc:
             last_error = exc
             time.sleep(min(2 * attempt, 8))
     raise RuntimeError(f"{symbol} Yahoo fetch failed after {retries} attempts: {last_error}")
@@ -242,8 +245,7 @@ def update_provider(args: argparse.Namespace) -> dict[str, object]:
     if args.start:
         start = datetime.strptime(args.start, "%Y-%m-%d").date()
     else:
-        latest_dates = [d for d in (latest_symbol_date(provider_uri, symbol, old_calendar) for symbol in symbols) if d is not None]
-        start = (min(latest_dates) + timedelta(days=1)) if latest_dates else old_latest + timedelta(days=1)
+        start = old_latest + timedelta(days=1)
     if start > end:
         return {"status": "SKIPPED", "message": f"selected symbols already up to date through {end}", "start": start, "end": end}
     print(f"provider={provider_uri}")
@@ -252,20 +254,43 @@ def update_provider(args: argparse.Namespace) -> dict[str, object]:
     fetched: dict[str, pd.DataFrame] = {}
     failed: dict[str, str] = {}
     started_at = datetime.now().strftime("%Y%m%d_%H%M%S")
-    for index, symbol in enumerate(symbols, start=1):
-        try:
-            df = fetch_yahoo(symbol, start, end, retries=args.retries)
-            if not df.empty:
-                fetched[symbol] = df
-            print(f"[{index:>4}/{len(symbols)}] {symbol:<8} rows={len(df)}")
-        except Exception as exc:
-            failed[symbol] = str(exc)
-            print(f"[{index:>4}/{len(symbols)}] {symbol:<8} FAILED {exc}")
-            if args.max_failures and len(failed) >= args.max_failures:
-                print(f"max_failures={args.max_failures} reached; stopping fetch loop.")
-                break
-        if args.sleep > 0:
-            time.sleep(args.sleep)
+    workers = max(1, int(args.workers or 1))
+    if workers == 1:
+        for index, symbol in enumerate(symbols, start=1):
+            try:
+                df = fetch_yahoo(symbol, start, end, retries=args.retries)
+                if not df.empty:
+                    fetched[symbol] = df
+                print(f"[{index:>4}/{len(symbols)}] {symbol:<8} rows={len(df)}")
+            except Exception as exc:
+                failed[symbol] = str(exc)
+                print(f"[{index:>4}/{len(symbols)}] {symbol:<8} FAILED {exc}")
+                if args.max_failures and len(failed) >= args.max_failures:
+                    print(f"max_failures={args.max_failures} reached; stopping fetch loop.")
+                    break
+            if args.sleep > 0:
+                time.sleep(args.sleep)
+    else:
+        print(f"fetch_workers={workers}")
+        with ThreadPoolExecutor(max_workers=workers) as executor:
+            future_to_symbol = {}
+            for symbol in symbols:
+                future_to_symbol[executor.submit(fetch_yahoo, symbol, start, end, args.retries)] = symbol
+                if args.sleep > 0:
+                    time.sleep(args.sleep)
+            for index, future in enumerate(as_completed(future_to_symbol), start=1):
+                symbol = future_to_symbol[future]
+                try:
+                    df = future.result()
+                    if not df.empty:
+                        fetched[symbol] = df
+                    print(f"[{index:>4}/{len(symbols)}] {symbol:<8} rows={len(df)}")
+                except Exception as exc:
+                    failed[symbol] = str(exc)
+                    print(f"[{index:>4}/{len(symbols)}] {symbol:<8} FAILED {exc}")
+                    if args.max_failures and len(failed) >= args.max_failures:
+                        print(f"max_failures={args.max_failures} reached; stopping fetch loop.")
+                        break
 
     if failed:
         failure_log = args.failure_log

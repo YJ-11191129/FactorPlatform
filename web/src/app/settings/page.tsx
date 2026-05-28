@@ -29,7 +29,7 @@ export default function SettingsPage() {
         Settings
       </Typography.Title>
       <Typography.Paragraph type="secondary">
-        Configure API Key used for calling backend endpoints.
+        Configure the API key used for protected platform requests.
       </Typography.Paragraph>
 
       <Space direction="vertical" style={{ width: "100%" }} size={12}>
@@ -48,4 +48,3 @@ export default function SettingsPage() {
     </Card>
   );
 }
-

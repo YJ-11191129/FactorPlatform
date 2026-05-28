@@ -9,6 +9,8 @@ import type { FactorItem } from "@/types/factor";
 export function FactorTable(props: {
   loading?: boolean;
   data: FactorItem[];
+  qlibReady?: boolean;
+  qlibDisabledReason?: string;
   onRunDemo: (factorName: string) => void;
   onRunQlib: (factorName: string) => void;
 }) {
@@ -73,7 +75,12 @@ export function FactorTable(props: {
           <Button size="small" onClick={() => props.onRunDemo(r.factor_name)}>
             运行 Demo
           </Button>
-          <Button size="small" onClick={() => props.onRunQlib(r.factor_name)}>
+          <Button
+            size="small"
+            disabled={props.qlibReady === false}
+            title={props.qlibReady === false ? props.qlibDisabledReason : undefined}
+            onClick={() => props.onRunQlib(r.factor_name)}
+          >
             运行 Qlib
           </Button>
           <Dropdown

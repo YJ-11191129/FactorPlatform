@@ -461,7 +461,11 @@ def _source_from_audit(source_id: str) -> dict[str, Any] | None:
     return None
 
 
-def evaluate_backtest_data_gate(requested_end_date: date | str | None = None) -> dict[str, Any]:
+def evaluate_backtest_data_gate(
+    requested_end_date: date | str | None = None,
+    *,
+    allow_latest_available: bool = False,
+) -> dict[str, Any]:
     override = os.getenv("FACTOR_PLATFORM_BACKTEST_OHLCV_PATH")
     if override:
         item = _annotate_source(
@@ -479,20 +483,61 @@ def evaluate_backtest_data_gate(requested_end_date: date | str | None = None) ->
         item = _source_from_audit("wind_stock_ohlcv")
     if item is None:
         return {"blocking_status": "BLOCKED", "message": "wind_stock_ohlcv source is not configured", "source_id": "wind_stock_ohlcv"}
-    return _gate_from_source(item, requested_end_date=requested_end_date)
+
+    latest = _parse_date(item.get("end_date"))
+    effective_end_date = requested_end_date
+    using_latest_available = bool(allow_latest_available and requested_end_date is None and latest is not None)
+    if using_latest_available:
+        effective_end_date = latest
+
+    gate = _gate_from_source(item, requested_end_date=effective_end_date)
+    if using_latest_available:
+        gate["original_requested_end_date"] = None
+        gate["effective_end_date"] = latest.isoformat() if latest else None
+        gate["using_latest_available"] = True
+        if gate.get("blocking_status") == "WARN" and str(item.get("status") or "") == "STALE":
+            reason = gate.get("reason") or item.get("freshness_reason") or "; ".join(item.get("notes") or [])
+            gate["message"] = (
+                f"wind_stock_ohlcv is stale for live use but backtest will run through "
+                f"latest available historical date {latest.isoformat()}: {reason}"
+            )
+    return gate
 
 
 def evaluate_stock_radar_data_gate(
     provider_uri: str,
     requested_end_date: date | str | None = None,
+    *,
+    allow_latest_available: bool = False,
 ) -> dict[str, Any]:
+    def gate_for_item(item: dict[str, Any]) -> dict[str, Any]:
+        latest = _parse_date(item.get("end_date"))
+        effective_end_date = requested_end_date
+        using_latest_available = bool(allow_latest_available and requested_end_date is None and latest is not None)
+        if using_latest_available:
+            effective_end_date = latest
+
+        gate = _gate_from_source(item, requested_end_date=effective_end_date)
+        if using_latest_available:
+            gate["original_requested_end_date"] = None
+            gate["effective_end_date"] = latest.isoformat() if latest else None
+            gate["using_latest_available"] = True
+            if gate.get("blocking_status") == "WARN" and str(item.get("status") or "") == "STALE":
+                reason = gate.get("reason") or item.get("freshness_reason") or "; ".join(item.get("notes") or [])
+                source_id = str(item.get("source_id") or "qlib_daily")
+                gate["message"] = (
+                    f"{source_id} is stale for live use but backtest will run through "
+                    f"latest available historical date {latest.isoformat()}: {reason}"
+                )
+        return gate
+
     provider_norm = _norm_path(provider_uri)
     for spec in configured_sources():
         if spec.kind == "qlib_provider" and _norm_path(spec.path) == provider_norm:
             item = _source_from_audit(spec.source_id)
             if item is None:
                 break
-            return _gate_from_source(item, requested_end_date=requested_end_date)
+            return gate_for_item(item)
 
     item = _annotate_source(
         _read_qlib_status(
@@ -506,7 +551,7 @@ def evaluate_stock_radar_data_gate(
         )
     )
     item["is_blocking"] = True
-    return _gate_from_source(item, requested_end_date=requested_end_date)
+    return gate_for_item(item)
 
 
 def _write_report(payload: dict[str, Any], run_id: str) -> dict[str, str]:
@@ -644,6 +689,8 @@ def _registered_updater_command(updater_id: str) -> list[str]:
             "0.2",
             "--retries",
             "5",
+            "--workers",
+            "8",
         ],
     }
     try:

@@ -95,6 +95,10 @@ class RunAiBacktestIn(BaseModel):
     start_date: Optional[date] = None
     end_date: Optional[date] = None
     universe: Optional[List[str]] = None
+    data_source: Optional[str] = None
+    qlib_region: Optional[str] = None
+    provider_uri: Optional[str] = None
+    qlib_universe: Optional[str] = None
     initial_cash: float = 1_000_000.0
     fee_bps: Optional[float] = None
     use_adj: bool = True

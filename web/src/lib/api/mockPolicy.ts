@@ -4,8 +4,14 @@ export function allowMockFallback(): boolean {
   return !["0", "false", "no", "off"].includes(raw.toLowerCase());
 }
 
-export function mockModeLabel(): "demo" | "production" {
-  return allowMockFallback() ? "demo" : "production";
+export function demoReadOnly(): boolean {
+  const raw = process.env.NEXT_PUBLIC_DEMO_READONLY;
+  if (!raw) return false;
+  return !["0", "false", "no", "off"].includes(raw.toLowerCase());
+}
+
+export function mockModeLabel(): "demo fallback / mock data" | "production" {
+  return allowMockFallback() ? "demo fallback / mock data" : "production";
 }
 
 export function mockFallbackError(feature: string): Error {

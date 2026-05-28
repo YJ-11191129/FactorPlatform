@@ -17,10 +17,10 @@ import Link from "next/link";
 import styles from "./page.module.css";
 
 const assets = [
-  { symbol: "XAU/USD", state: "Elevated vol", delta: "+0.42%" },
-  { symbol: "USD/JPY", state: "Range risk", delta: "-0.18%" },
-  { symbol: "BTC/USD", state: "Event watch", delta: "+1.28%" },
-  { symbol: "S&P 500", state: "Trend check", delta: "+0.16%" },
+  { symbol: "XAU/USD", state: "Elevated vol", delta: "+0.42%", price: "2,438.10", confidence: "74%" },
+  { symbol: "BTC/USD", state: "Event watch", delta: "+1.28%", price: "69,420", confidence: "61%" },
+  { symbol: "S&P 500", state: "Trend check", delta: "+0.16%", price: "5,326.2", confidence: "67%" },
+  { symbol: "USD/JPY", state: "Range risk", delta: "-0.18%", price: "156.82", confidence: "58%" },
 ];
 
 const features = [
@@ -62,12 +62,34 @@ const features = [
   },
 ];
 
-const agents = ["Economist Agent", "Quant Agent", "Technical Agent", "Risk Agent", "News Agent", "Contrarian Agent"];
+const agents = [
+  { name: "Economist Agent", note: "Real-yield sensitivity and central-bank path review." },
+  { name: "Quant Agent", note: "Factor strength, drawdown behavior, and sample stability." },
+  { name: "Technical Agent", note: "Trend structure, acceptance levels, and failed-breakout risk." },
+  { name: "Risk Agent", note: "Exposure cap, stop discipline, and adverse scenario pressure." },
+  { name: "News Agent", note: "Event windows, headline drift, and catalyst freshness." },
+  { name: "Contrarian Agent", note: "Crowding, consensus overreach, and rejection evidence." },
+];
 
 const scenarios = [
   { label: "Bullish continuation", probability: "42%", tone: "positive" },
   { label: "Neutral consolidation", probability: "36%", tone: "neutral" },
   { label: "Defensive reversal", probability: "22%", tone: "risk" },
+];
+
+const terminalMetrics = [
+  { label: "AI Confidence", value: "74%", detail: "3-agent agreement", tone: "positive" },
+  { label: "Volatility Regime", value: "Elevated", detail: "ATR + event window", tone: "warningText" },
+  { label: "Risk/Reward Estimate", value: "2.3:1", detail: "after invalidation level", tone: "neutral" },
+  { label: "Stop-Loss Discipline", value: "Required", detail: "prior value area break", tone: "risk" },
+];
+
+const signalRows = [
+  { label: "Candidate", value: "XAU/USD continuation" },
+  { label: "Probability range", value: "62-81%" },
+  { label: "Risk level", value: "Elevated", tone: "warningText" },
+  { label: "Trigger condition", value: "Acceptance above prior high" },
+  { label: "Rejected alternative", value: "BTC/USD breakout - liquidity confirmation failed" },
 ];
 
 const pricing = [
@@ -107,7 +129,9 @@ function TerminalMockup() {
           <button key={asset.symbol} className={styles.assetButton} type="button">
             <span>{asset.symbol}</span>
             <small>{asset.state}</small>
+            <em>{asset.price}</em>
             <strong className={asset.delta.startsWith("+") ? styles.positive : styles.negative}>{asset.delta}</strong>
+            <small>AI confidence {asset.confidence}</small>
           </button>
         ))}
       </div>
@@ -151,25 +175,30 @@ function TerminalMockup() {
             <circle cx="498" cy="96" r="5" fill="#34D399" />
             <circle cx="622" cy="48" r="5" fill="#22D3EE" />
           </svg>
+          <div className={styles.chartMetaGrid}>
+            <div>
+              <span>Trigger</span>
+              <strong>Close above 2,445 + USD beta stable</strong>
+            </div>
+            <div>
+              <span>Invalidation</span>
+              <strong>Break below prior value area</strong>
+            </div>
+            <div>
+              <span>Model uncertainty</span>
+              <strong>Medium - event risk active</strong>
+            </div>
+          </div>
         </section>
 
         <aside className={styles.metricsPanel}>
-          <div className={styles.metricCard}>
-            <span>AI Confidence</span>
-            <strong>74%</strong>
-          </div>
-          <div className={styles.metricCard}>
-            <span>Volatility Regime</span>
-            <strong>Elevated</strong>
-          </div>
-          <div className={styles.metricCard}>
-            <span>Risk/Reward Estimate</span>
-            <strong>2.3:1</strong>
-          </div>
-          <div className={styles.metricCard}>
-            <span>Scenario Bias</span>
-            <strong>Bullish continuation</strong>
-          </div>
+          {terminalMetrics.map((metric) => (
+            <div key={metric.label} className={styles.metricCard}>
+              <span>{metric.label}</span>
+              <strong className={styles[metric.tone]}>{metric.value}</strong>
+              <em>{metric.detail}</em>
+            </div>
+          ))}
         </aside>
       </div>
 
@@ -179,12 +208,16 @@ function TerminalMockup() {
           <p>Momentum remains constructive while volatility is elevated. Confirmation requires price acceptance above the prior high and stable USD sensitivity.</p>
         </div>
         <div className={styles.researchNote}>
-          <span>Market microstructure notes</span>
-          <p>Liquidity is thinner around event windows. Avoid interpreting single-candle extensions as deterministic confirmation.</p>
+          <span>Scenario analysis</span>
+          <p>Base case favors continuation, but a defensive reversal remains active if real-yield pressure reappears.</p>
         </div>
         <div className={styles.researchNote}>
-          <span>Risk controls</span>
+          <span>Stop-loss discipline</span>
           <p>Stop-loss discipline, exposure cap, and time horizon are required before any decision support output is acted on.</p>
+        </div>
+        <div className={styles.researchNote}>
+          <span>Market microstructure notes</span>
+          <p>Liquidity is thinner around event windows. Avoid interpreting single-candle extensions as confirmation.</p>
         </div>
       </div>
     </div>
@@ -207,7 +240,7 @@ export default function Home() {
         </nav>
         <div className={styles.headerActions}>
           <Link href="/settings" className={styles.secondaryHeaderLink}>Login</Link>
-          <Link href="/signal-center" className={styles.headerCta}>Launch App</Link>
+          <Link href="/dashboard" className={styles.headerCta}>Launch App</Link>
         </div>
       </header>
 
@@ -224,7 +257,7 @@ export default function Home() {
           </p>
           <div className={styles.heroActions}>
             <Link href="#features" className={styles.primaryCta}>Explore Platform</Link>
-            <Link href="/signal-center" className={styles.secondaryCta}>View Research Terminal</Link>
+            <Link href="/dashboard" className={styles.secondaryCta}>View Research Terminal</Link>
           </div>
           <div className={styles.trustRow}>
             <span>Probabilistic insight</span>
@@ -268,7 +301,10 @@ export default function Home() {
           </p>
           <div className={styles.agentList}>
             {agents.map((agent) => (
-              <span key={agent}>{agent}</span>
+              <article key={agent.name}>
+                <strong>{agent.name}</strong>
+                <span>{agent.note}</span>
+              </article>
             ))}
           </div>
         </div>
@@ -277,22 +313,21 @@ export default function Home() {
             <LineChartOutlined />
             <span>Signal screening view</span>
           </div>
-          <div className={styles.screeningRow}>
-            <span>Candidate</span>
-            <strong>XAU/USD continuation</strong>
+          <div className={styles.screeningSummary}>
+            <div>
+              <span>Screening decision</span>
+              <strong>Conditional research candidate</strong>
+            </div>
+            <div className={styles.probabilityRail} aria-label="Qualifying probability 68 percent">
+              <span style={{ width: "68%" }} />
+            </div>
           </div>
-          <div className={styles.screeningRow}>
-            <span>Confidence interval</span>
-            <strong>62-81%</strong>
-          </div>
-          <div className={styles.screeningRow}>
-            <span>Risk level</span>
-            <strong className={styles.warningText}>Elevated</strong>
-          </div>
-          <div className={styles.screeningRow}>
-            <span>Trigger condition</span>
-            <strong>Acceptance above prior high</strong>
-          </div>
+          {signalRows.map((row) => (
+            <div key={row.label} className={styles.screeningRow}>
+              <span>{row.label}</span>
+              <strong className={row.tone ? styles[row.tone] : undefined}>{row.value}</strong>
+            </div>
+          ))}
           <div className={styles.scenarioStack}>
             {scenarios.map((item) => (
               <div key={item.label} className={styles.scenarioItem}>
@@ -360,7 +395,7 @@ export default function Home() {
                   <li key={item}>{item}</li>
                 ))}
               </ul>
-              <Link href="/signal-center" className={styles.planButton}>Explore workspace</Link>
+              <Link href="/dashboard" className={styles.planButton}>Explore workspace</Link>
             </article>
           ))}
         </div>
@@ -370,12 +405,12 @@ export default function Home() {
         <DeploymentUnitOutlined />
         <h2>Build a more disciplined market research workflow</h2>
         <p>Review signals, scenarios, regimes, and risk context inside one institutional research terminal.</p>
-        <Link href="/signal-center" className={styles.primaryCta}>View Research Terminal</Link>
+        <Link href="/dashboard" className={styles.primaryCta}>View Research Terminal</Link>
       </section>
 
       <footer className={styles.footer}>
         <span>FactorPlatform</span>
-        <p>Risk disclaimer: market analysis is probabilistic and intended for research use only. Terms · Privacy</p>
+        <p>Risk disclaimer: market analysis is probabilistic and intended for research use only. Terms / Privacy</p>
       </footer>
     </main>
   );

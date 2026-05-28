@@ -42,7 +42,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.backend
-    command: ["sh","-lc","python scripts/init_db.py && celery -A app.tasks.celery_app.celery_app worker -l info"]
+    command: ["sh","-lc","celery -A app.tasks.celery_app.celery_app worker -l info"]
     environment:
       DATABASE_URL: postgresql+psycopg://postgres:${POSTGRES_PASSWORD:-factorplatform_dev_password}@postgres:5432/factor_platform
       REDIS_URL: redis://redis:6379/0

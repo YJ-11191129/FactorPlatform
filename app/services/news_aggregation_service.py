@@ -11,6 +11,12 @@ from typing import Any
 import requests
 
 
+REQUEST_HEADERS = {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) FactorPlatform/0.1",
+    "Accept": "application/rss+xml, application/xml, application/json, text/xml;q=0.9, */*;q=0.8",
+}
+
+
 @dataclass(frozen=True)
 class NewsQuery:
     topic: str
@@ -39,6 +45,11 @@ def _google_news_rss_url(query: str, lang: str, region: str) -> str:
     return f"https://news.google.com/rss/search?q={q}&hl={hl}&gl={gl}&ceid={ceid}"
 
 
+def _gdelt_doc_url(query: str) -> str:
+    q = requests.utils.quote(query)
+    return f"https://api.gdeltproject.org/api/v2/doc/doc?query={q}&mode=artlist&format=json&sort=hybridrel"
+
+
 def _parse_rss(xml_text: str) -> list[dict[str, Any]]:
     root = ET.fromstring(xml_text)
     channel = root.find("channel")
@@ -60,6 +71,71 @@ def _parse_rss(xml_text: str) -> list[dict[str, Any]]:
             }
         )
     return items
+
+
+def _parse_gdelt_articles(data: dict[str, Any], limit: int) -> list[dict[str, Any]]:
+    items = []
+    for row in list(data.get("articles") or [])[:limit]:
+        title = _clean_text(str(row.get("title") or ""))
+        link = _clean_text(str(row.get("url") or ""))
+        source = _clean_text(str(row.get("domain") or row.get("sourcecountry") or "GDELT"))
+        published = _clean_text(str(row.get("seendate") or ""))
+        if not title:
+            continue
+        items.append(
+            {
+                "title": title,
+                "link": link,
+                "published_at": published,
+                "source": source,
+            }
+        )
+    return items
+
+
+def _search_google_news(query: NewsQuery, limit: int) -> dict[str, Any]:
+    url = _google_news_rss_url(query.topic, query.lang, query.region)
+    t0 = time.time()
+    r = requests.get(url, timeout=12, headers=REQUEST_HEADERS)
+    r.raise_for_status()
+    r.encoding = "utf-8"
+    items = _parse_rss(r.text)[:limit]
+    return {
+        "topic": query.topic,
+        "source": "google_news_rss",
+        "request_url": url,
+        "fetched_at": datetime.utcnow().isoformat() + "Z",
+        "items": items,
+        "count": len(items),
+        "latency_ms": int((time.time() - t0) * 1000),
+        "warnings": [],
+    }
+
+
+def _search_gdelt(query: NewsQuery, limit: int, warning: str | None = None) -> dict[str, Any]:
+    t0 = time.time()
+    url = "https://api.gdeltproject.org/api/v2/doc/doc"
+    params = {
+        "query": query.topic,
+        "mode": "artlist",
+        "format": "json",
+        "sort": "hybridrel",
+        "maxrecords": limit,
+    }
+    r = requests.get(url, params=params, timeout=15, headers=REQUEST_HEADERS)
+    r.raise_for_status()
+    data = r.json()
+    items = _parse_gdelt_articles(data, limit)
+    return {
+        "topic": query.topic,
+        "source": "gdelt_doc",
+        "request_url": _gdelt_doc_url(query.topic),
+        "fetched_at": datetime.utcnow().isoformat() + "Z",
+        "items": items,
+        "count": len(items),
+        "latency_ms": int((time.time() - t0) * 1000),
+        "warnings": [warning] if warning else [],
+    }
 
 
 def search_news(query: NewsQuery) -> dict[str, Any]:
@@ -103,20 +179,10 @@ def search_news(query: NewsQuery) -> dict[str, Any]:
         }
     if source != "google_news_rss":
         raise ValueError(f"unknown news source={query.source}; supported sources: google_news_rss, openbb")
-    url = _google_news_rss_url(query.topic, query.lang, query.region)
-    t0 = time.time()
-    r = requests.get(url, timeout=10)
-    r.raise_for_status()
-    items = _parse_rss(r.text)[:limit]
-    return {
-        "topic": query.topic,
-        "source": "google_news_rss",
-        "request_url": url,
-        "fetched_at": datetime.utcnow().isoformat() + "Z",
-        "items": items,
-        "count": len(items),
-        "latency_ms": int((time.time() - t0) * 1000),
-    }
+    try:
+        return _search_google_news(query, limit)
+    except Exception as e:
+        return _search_gdelt(query, limit, warning=f"Google News RSS unavailable; used GDELT fallback. ({type(e).__name__})")
 
 
 def summarize_news(items: list[dict[str, Any]]) -> dict[str, Any]:

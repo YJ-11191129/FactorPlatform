@@ -60,6 +60,44 @@ class TestDataFreshnessGate(unittest.TestCase):
             self.assertEqual(live_gate["blocking_status"], "BLOCKED")
             self.assertEqual(historical_gate["blocking_status"], "WARN")
 
+    def test_backtest_gate_can_use_latest_available_date_for_historical_run(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            path = Path(td) / "stale.parquet"
+            latest = date.today() - timedelta(days=10)
+            _write_daily(path, latest)
+            specs = [dms.DataSourceSpec("wind_stock_ohlcv", "Backtest OHLCV", path, "parquet", freshness_days=5)]
+            with patch.object(dms, "configured_sources", lambda: specs):
+                live_gate = dms.evaluate_backtest_data_gate()
+                backtest_gate = dms.evaluate_backtest_data_gate(allow_latest_available=True)
+
+            self.assertEqual(live_gate["blocking_status"], "BLOCKED")
+            self.assertEqual(backtest_gate["blocking_status"], "WARN")
+            self.assertTrue(backtest_gate["using_latest_available"])
+            self.assertEqual(backtest_gate["effective_end_date"], latest.isoformat())
+            self.assertIn("latest available historical date", backtest_gate["message"])
+
+    def test_qlib_backtest_gate_can_use_latest_available_date(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            provider = Path(td) / "qlib"
+            provider.mkdir()
+            latest = date.today() - timedelta(days=10)
+            specs = [dms.DataSourceSpec("qlib_cn_daily", "Qlib CN daily provider", provider, "qlib_provider", freshness_days=5)]
+            source = {
+                "source_id": "qlib_cn_daily",
+                "status": "STALE",
+                "end_date": latest.isoformat(),
+                "freshness_reason": "latest data is stale",
+            }
+            with patch.object(dms, "configured_sources", lambda: specs), patch.object(dms, "_source_from_audit", lambda _source_id: source):
+                live_gate = dms.evaluate_stock_radar_data_gate(str(provider))
+                backtest_gate = dms.evaluate_stock_radar_data_gate(str(provider), allow_latest_available=True)
+
+            self.assertEqual(live_gate["blocking_status"], "BLOCKED")
+            self.assertEqual(backtest_gate["blocking_status"], "WARN")
+            self.assertTrue(backtest_gate["using_latest_available"])
+            self.assertEqual(backtest_gate["effective_end_date"], latest.isoformat())
+            self.assertIn("latest available historical date", backtest_gate["message"])
+
     def test_unknown_updater_id_is_explainable(self) -> None:
         with self.assertRaisesRegex(ValueError, "unknown updater_id"):
             dms.run_daily_data_maintenance(dry_run=True, updater_id="not_a_real_updater")

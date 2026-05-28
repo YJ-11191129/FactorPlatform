@@ -30,6 +30,170 @@ function paginated<T>(items: T[], page = 1, pageSize = items.length) {
 
 function mockResponse(pathname: string, search: URLSearchParams): NextResponse | null {
   const baseNow = nowIso();
+  if (pathname === "/health") {
+    return json({
+      status: "ok",
+      version: "demo-fallback",
+      mode: "DEMO_FALLBACK",
+      data_source: "mock",
+    });
+  }
+
+  if (pathname === "/api/v1/strategy-ai/providers") {
+    return json({
+      default_provider: "demo",
+      providers: [
+        {
+          name: "demo",
+          model: "mock-readonly",
+          endpoint: "demo://fallback",
+          ready: true,
+          reason: "Read-only demo fallback; live LLM providers remain on the host machine.",
+        },
+      ],
+    });
+  }
+
+  if (pathname === "/api/data-maintenance/latest") {
+    return json({
+      generated_at: baseNow,
+      overall_status: "DEMO_FALLBACK",
+      audit: {
+        blocking_status: "WARN",
+        blockers: [],
+        recommendations: [],
+        sources: [
+          {
+            source_id: "qlib_cn_daily",
+            label: "Qlib CN daily provider",
+            status: "DEMO",
+            end_date: "demo",
+            notes: ["Demo fallback is read-only and does not inspect local qlib files."],
+          },
+          {
+            source_id: "qlib_us_daily",
+            label: "Qlib US daily provider",
+            status: "DEMO",
+            end_date: "demo",
+            notes: ["Demo fallback is read-only and does not inspect local qlib files."],
+          },
+        ],
+      },
+    });
+  }
+
+  if (pathname === "/api/data-maintenance/paths") {
+    return json({
+      sources: [
+        { source_id: "qlib_cn_daily", label: "Qlib CN daily provider", status: "DEMO", path: "demo://qlib-cn" },
+        { source_id: "qlib_us_daily", label: "Qlib US daily provider", status: "DEMO", path: "demo://qlib-us" },
+      ],
+    });
+  }
+
+  if (pathname === "/api/qlib/status") {
+    return json({
+      status: "DEMO_FALLBACK",
+      provider_uri: "demo://qlib",
+      universe: "csi300",
+      notes: ["Native qlib mining is disabled in read-only demo fallback."],
+    });
+  }
+
+  if (pathname === "/api/strategies") {
+    return json([
+      {
+        strategy_id: "demo_momentum_v1",
+        strategy_name: "Demo Momentum Rotation",
+        description: "Read-only demo strategy using delayed daily momentum signals.",
+        version: "v1",
+        owner: "demo",
+        parameter_schema: {
+          topk: { type: "int", default: 10, min: 1, max: 50 },
+          lookback: { type: "int", default: 20, min: 2, max: 120 },
+        },
+        python_entry: "demo://readonly",
+      },
+    ]);
+  }
+
+  if (pathname === "/api/backtests/data-status") {
+    return json({
+      source: "demo://qlib",
+      columns: ["trade_date", "asset_code", "open", "high", "low", "close", "volume"],
+      start_date: "2020-01-01",
+      end_date: "demo",
+      asset_count: 300,
+      row_count: 120000,
+      data_health: {
+        blocking_status: "WARN",
+        message: "Demo fallback uses mock read-only backtest data.",
+        source_id: "demo_qlib",
+      },
+    });
+  }
+
+  if (pathname === "/api/backtests") {
+    return json([
+      {
+        backtest_id: "demo_bt_001",
+        created_at: baseNow,
+        strategy_id: "demo_momentum_v1",
+        strategy_name: "Demo Momentum Rotation",
+        portfolio_id: null,
+        params: { topk: 10, lookback: 20 },
+        initial_cash: 1000000,
+        fee_bps: 5,
+        use_adj: true,
+        universe_size: 300,
+        metrics: {
+          total_return: 0.084,
+          annual_return: 0.112,
+          annual_vol: 0.176,
+          sharpe: 0.88,
+          max_drawdown: -0.061,
+          avg_daily_turnover: 0.18,
+          total_transaction_cost: 4200,
+        },
+        price_data_source: { kind: "qlib", source_id: "demo_qlib", region: "cn", provider_uri: "demo://qlib" },
+        timing_note: "Demo signals use one-bar delayed execution.",
+        execution_model: {
+          signal_timestamp: "close_t",
+          execution_delay: "one_bar",
+          return_alignment: "positions from t-1 are applied to close-to-close returns on t",
+          cost_model: "5 bps applied to one-way turnover",
+        },
+        diagnostics: {
+          price_start_date: "2026-04-01",
+          price_end_date: "2026-05-21",
+          simulated_asset_count: 300,
+          normalized_position_rows: 3000,
+        },
+        data_health: {
+          blocking_status: "WARN",
+          message: "Demo fallback uses mock read-only backtest data.",
+          source_id: "demo_qlib",
+        },
+      },
+    ]);
+  }
+
+  if (pathname.startsWith("/api/backtests/") && pathname.endsWith("/equity")) {
+    const items = Array.from({ length: 40 }).map((_, i) => {
+      const d = new Date(Date.UTC(2026, 3, 1 + i));
+      const equity = 1000000 * (1 + i * 0.002 + Math.sin(i / 4) * 0.006);
+      return {
+        trade_date: d.toISOString().slice(0, 10),
+        equity: Math.round(equity * 100) / 100,
+        gross_ret: i === 0 ? 0 : 0.002 + Math.cos(i / 4) * 0.0015,
+        turnover: i % 5 === 0 ? 0.22 : 0.04,
+        cost: i % 5 === 0 ? 0.00011 : 0.00002,
+        net_ret: i === 0 ? 0 : 0.0019 + Math.cos(i / 4) * 0.0015,
+      };
+    });
+    return json({ items, row_count: items.length });
+  }
+
   if (pathname === "/api/v1/metadata/enums") {
     return json({
       side: ["LONG", "SHORT", "NEUTRAL"],
@@ -43,7 +207,7 @@ function mockResponse(pathname: string, search: URLSearchParams): NextResponse |
     });
   }
 
-  if (pathname === "/api/v1/signals/live" || pathname === "/api/v1/signals/history") {
+  if (pathname === "/api/v1/signals/live" || pathname === "/api/v1/signals/shadow" || pathname === "/api/v1/signals/history") {
     const items = [
       {
         signal_id: "sig_20260329_0001",
@@ -305,6 +469,10 @@ function shouldFallbackToMock(): boolean {
   return demoModeEnabled();
 }
 
+function demoReadOnlyEnabled(): boolean {
+  return demoModeEnabled() && envEnabled(process.env.NEXT_PUBLIC_DEMO_READONLY || process.env.FACTOR_PLATFORM_DEMO_READONLY);
+}
+
 function detectWslHostOrigin(): string | null {
   try {
     const isWsl = process.platform === "linux" && Boolean(process.env.WSL_DISTRO_NAME);
@@ -312,13 +480,13 @@ function detectWslHostOrigin(): string | null {
 
     try {
       const hosts = fs.readFileSync("/etc/hosts", "utf8");
-      if (hosts.includes("host.docker.internal")) return "http://host.docker.internal:8002";
+      if (hosts.includes("host.docker.internal")) return "http://host.docker.internal:8003";
     } catch {}
 
     const resolv = fs.readFileSync("/etc/resolv.conf", "utf8");
     const m = resolv.match(/^nameserver\s+([0-9.]+)\s*$/m);
     if (!m?.[1]) return null;
-    return `http://${m[1]}:8002`;
+    return `http://${m[1]}:8003`;
   } catch {
     return null;
   }
@@ -333,7 +501,25 @@ function backendOrigin(): string {
       if (u.protocol === "http:" || u.protocol === "https:") return u.origin;
     } catch {}
   }
-  return detectWslHostOrigin() || "http://127.0.0.1:8002";
+  return detectWslHostOrigin() || "http://127.0.0.1:8003";
+}
+
+function fallbackBackendOrigins(primary: string): string[] {
+  const candidates = (process.env.BACKEND_FALLBACK_ORIGINS || "")
+    .split(",")
+    .map((item) => item.trim())
+    .filter(Boolean)
+    .map((item) => (item.startsWith("http://") || item.startsWith("https://") ? item : `http://${item}`));
+
+  try {
+    const u = new URL(primary);
+    if (["127.0.0.1", "localhost"].includes(u.hostname)) {
+      if (u.port === "8003") candidates.push(`${u.protocol}//${u.hostname}:8002`);
+      if (u.port === "8002") candidates.push(`${u.protocol}//${u.hostname}:8003`);
+    }
+  } catch {}
+
+  return Array.from(new Set(candidates)).filter((item) => item !== primary);
 }
 
 function apiKey(): string {
@@ -342,11 +528,27 @@ function apiKey(): string {
 
 function requestTimeoutMs(method: string, pathname: string): number {
   const m = method.toUpperCase();
+  if (pathname.startsWith("/api/backtests/data-status")) return 60000;
+  if (pathname.startsWith("/api/data-maintenance/paths")) return 120000;
   if (m === "GET" || m === "HEAD") return 8000;
   if (pathname.startsWith("/api/backtests/run")) return 120000;
+  if (pathname.startsWith("/api/data-maintenance/daily-update")) return 600000;
+  if (pathname.startsWith("/api/v1/signals/refresh")) return 180000;
   if (pathname.startsWith("/api/v1/macro/")) return 120000;
   if (pathname.startsWith("/api/v1/strategy-ai/")) return 120000;
   return 30000;
+}
+
+async function toProxyResponse(upstream: Response) {
+  const body = await upstream.arrayBuffer();
+  const resHeaders = new Headers(upstream.headers);
+  resHeaders.delete("content-encoding");
+  resHeaders.delete("content-length");
+
+  return new NextResponse(body, {
+    status: upstream.status,
+    headers: resHeaders,
+  });
 }
 
 async function proxy(req: Request, ctx: { params: { path: string[] } }) {
@@ -354,6 +556,18 @@ async function proxy(req: Request, ctx: { params: { path: string[] } }) {
     const { path } = ctx.params;
     const url = new URL(req.url);
     const pathname = `/${path.join("/")}`;
+    const method = req.method.toUpperCase();
+
+    if (demoReadOnlyEnabled() && !["GET", "HEAD", "OPTIONS"].includes(method)) {
+      return json(
+        {
+          error: "DEMO_READ_ONLY",
+          detail: "Demo fallback is read-only. Restart the roadshow stack in REAL mode to run mutations.",
+          mode: "DEMO_FALLBACK",
+        },
+        423,
+      );
+    }
 
     if (shouldForceMock()) {
       const mock = mockResponse(pathname, url.searchParams);
@@ -407,6 +621,21 @@ async function proxy(req: Request, ctx: { params: { path: string[] } }) {
         clearTimeout(timeout);
       }
     } catch (e) {
+      for (const fallbackOrigin of fallbackBackendOrigins(origin)) {
+        try {
+          const retryTarget = new URL(pathname, fallbackOrigin);
+          retryTarget.search = url.search;
+          const controller = new AbortController();
+          const timeout = setTimeout(() => controller.abort(), requestTimeoutMs(req.method, pathname));
+          try {
+            const retry = await fetch(retryTarget, { ...init, signal: controller.signal });
+            return toProxyResponse(retry);
+          } finally {
+            clearTimeout(timeout);
+          }
+        } catch {}
+      }
+
       if (shouldFallbackToMock()) {
         const mock = mockResponse(pathname, url.searchParams);
         if (mock) return mock;
@@ -424,16 +653,12 @@ async function proxy(req: Request, ctx: { params: { path: string[] } }) {
       );
     }
 
-    const body = await upstream.arrayBuffer();
+    if (["GET", "HEAD"].includes(method) && [502, 503, 504].includes(upstream.status)) {
+      const mock = mockResponse(pathname, url.searchParams);
+      if (mock) return mock;
+    }
 
-    const resHeaders = new Headers(upstream.headers);
-    resHeaders.delete("content-encoding");
-    resHeaders.delete("content-length");
-
-    return new NextResponse(body, {
-      status: upstream.status,
-      headers: resHeaders,
-    });
+    return toProxyResponse(upstream);
   } catch (e) {
     const debug = process.env.NODE_ENV !== "production";
     return NextResponse.json(

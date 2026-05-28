@@ -1,29 +1,229 @@
 # FactorPlatform
 
-因子库与因子分析平台开发目录。
+FactorPlatform is an AI-assisted financial research and trading support platform. It is designed as a risk-aware research terminal for market intelligence, stock screening, strategy generation, backtesting, attribution, and data maintenance.
 
-- 主设计文档：docs/FACTOR_PLATFORM_MASTER_PLAN.md
-- 建议按主设计文档拆分并补齐 docs 下的子文档
+The project is not a trading signal website and does not provide investment advice. Its purpose is to help researchers organize evidence, understand uncertainty, screen candidates, and validate strategy ideas before making independent decisions.
 
-## 开发启动（后端）
+## Highlights
 
-```bash
-python -m venv .venv
-.venv\\Scripts\\activate
-pip install -r requirements.txt
-uvicorn app.api.app:app --reload --host 0.0.0.0 --port 8000
+- Professional fintech landing page and research dashboard.
+- AI stock radar with factor-based candidate screening and contribution explanations.
+- Macro intelligence module for news summaries, event chains, and cross-asset scenario analysis.
+- AI strategy builder that turns research hypotheses into structured strategy drafts.
+- Backtest workspace with timing assumptions, transaction costs, positions, and result pages.
+- Signal center for regime-aware signal screening, router decisions, notifications, and outcome tracking.
+- Performance attribution for strategy review and research reporting.
+- Regime monitor for volatility, liquidity, tail-risk, and historical state context.
+- Factor registry and data maintenance pages for qlib, OHLCV, freshness checks, and operational health.
+- Explicit fallback states for demo and offline scenarios so mock data is not mistaken for live research output.
+
+## Product Modules
+
+| Module | Route | Purpose |
+| --- | --- | --- |
+| Landing page | `/` | Institutional-style product introduction for AI market intelligence. |
+| Dashboard | `/dashboard` | Main research workspace with market board, AI stock entry, macro intelligence entry, and module navigation. |
+| Stock Radar | `/stock-radar` | Multi-factor candidate pool using momentum, trend, volatility, and volume-price features. |
+| Macro Intel | `/macro-intel` | News summary, event impact chain, and scenario-style macro analysis. |
+| AI Strategy Builder | `/ai-strategy-builder` | Generate and validate strategy specifications from research intent. |
+| Strategies / Backtests | `/strategies`, `/backtests/[id]` | Backtest configuration, execution, metrics, equity curves, and result review. |
+| Signal Center | `/signal-center`, `/signal-center/[id]` | Signal screening, risk context, router status, and detailed signal evidence. |
+| Performance | `/performance` | KPI overview, time-series curves, and attribution breakdowns. |
+| Regime Monitor | `/regime-monitor` | Market regime timeline, similar historical periods, and shock context. |
+| Factors | `/factors`, `/factors/[factorName]` | Factor registry, qlib readiness, factor metadata, and quality gates. |
+| Data Maintenance | `/data-maintenance` | Data freshness, source paths, row counts, lag checks, and refresh tasks. |
+| Settings | `/settings` | Language, advanced research mode, and local configuration controls. |
+
+## Architecture
+
+```text
+Frontend (Next.js / React / Ant Design)
+  -> API proxy and client adapters
+  -> Backend (FastAPI)
+  -> Services: factors, news, signals, strategies, backtests, data maintenance
+  -> Workers: Celery + Redis
+  -> Storage: Postgres + local data folders
+  -> Research data: qlib CN/US, OHLCV, news sources, strategy library
 ```
 
-## docker-compose（上线/联调）
+## Tech Stack
 
-```bash
+### Frontend
+
+- Next.js 14
+- React 18
+- TypeScript
+- Ant Design
+- TradingView widgets with local fallback charts
+
+### Backend
+
+- FastAPI
+- Pydantic
+- SQLAlchemy / Alembic
+- Postgres
+- Redis
+- Celery
+- pandas / numpy / scipy / scikit-learn / statsmodels
+
+### Research and Reporting
+
+- qlib-compatible local data paths
+- AI provider routing through configurable LLM settings
+- Report generation scripts using ReportLab and PyMuPDF
+
+## Repository Layout
+
+```text
+app/                     Backend application
+  api/                   FastAPI routers and schemas
+  services/              Research, strategy, signal, news, and data services
+  tasks/                 Celery tasks
+  factors/               Factor-related utilities
+  strategies/            Strategy logic
+
+web/                     Next.js frontend
+  src/app/               App Router pages
+  src/components/        Shared layout, charts, visuals, and UI components
+  src/lib/               API clients, adapters, i18n, and feature flags
+  src/types/             Frontend types
+
+scripts/                 Local run, health check, data refresh, and report scripts
+tests/                   Unit tests
+docs/                    Demo and operations documentation
+config/                  Config files
+strategy_library/        Strategy examples and templates
+```
+
+## Quick Start
+
+### 1. Backend
+
+```powershell
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+python -m pip install -r requirements.txt
+uvicorn app.api.app:app --reload --host 0.0.0.0 --port 8003
+```
+
+The local backend is usually expected at:
+
+```text
+http://127.0.0.1:8003
+```
+
+### 2. Frontend
+
+```powershell
+cd web
+npm install
+npm run dev -- --hostname 0.0.0.0 --port 3001
+```
+
+The local frontend is usually expected at:
+
+```text
+http://localhost:3001/dashboard
+```
+
+### 3. Docker Compose
+
+```powershell
 docker compose up -d --build
 ```
 
-- 前端：http://localhost:3000
-- 后端：http://localhost:8002
+The compose stack includes Postgres, Redis, backend, worker, and frontend services. Review `docker-compose.yml` and environment variables before using it outside local development.
 
-## 鉴权（API Key）
+## Environment Variables
 
-- docker-compose 默认开启鉴权：请求头 `X-API-Key`
-- key/角色在 `docker-compose.yml` 里通过 `FACTOR_PLATFORM_API_KEYS` 配置（格式：`key:role,key2:role2`）
+Copy the examples and adjust local paths and keys:
+
+```powershell
+Copy-Item .env.local.example .env.local
+Copy-Item web\.env.local.example web\.env.local
+```
+
+Important variables:
+
+| Variable | Purpose |
+| --- | --- |
+| `FACTOR_PLATFORM_API_KEYS` | Comma-separated API key and role pairs, for example `LOCAL_ADMIN_KEY:admin,LOCAL_VIEW_KEY:viewer`. |
+| `FACTOR_PLATFORM_REQUIRE_AUTH` | Enables API key checks when set to `1`. |
+| `FACTOR_PLATFORM_REQUIRE_DB` | Requires database-backed services when set to `1`. |
+| `DATABASE_URL` | Postgres connection string. |
+| `REDIS_URL` | Redis connection string. |
+| `FACTOR_PLATFORM_PROVIDER_URI` | Local qlib CN data path. |
+| `FACTOR_PLATFORM_US_PROVIDER_URI` | Local qlib US data path. |
+| `FACTOR_PLATFORM_REAL_OHLCV_PATH` | Local OHLCV parquet path. |
+| `LLM_PROVIDER` | AI provider selection, for example `deepseek` or `openai_compatible`. |
+| `LLM_BASE_URL` | OpenAI-compatible provider base URL. |
+| `LLM_API_KEY` | AI provider API key. Do not commit real keys. |
+| `NEXT_PUBLIC_API_KEY` | Frontend demo API key for local development. |
+| `BACKEND_ORIGIN` | Backend origin used by the Next.js API proxy. |
+
+## Useful Commands
+
+### Frontend checks
+
+```powershell
+cd web
+npm run lint
+npm run build
+```
+
+### Backend tests
+
+```powershell
+python -m pytest tests/unit
+```
+
+### Health check
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts/check_stack_health.ps1
+```
+
+### Start local demo helpers
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts/start_all.ps1
+```
+
+or, for LAN demo scenarios:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts/start_demo_lan.ps1
+```
+
+## Report PDF
+
+The project includes a script for generating a project presentation PDF with module descriptions, competitor analysis, product highlights, commercial outlook, and risk disclaimers.
+
+Install optional report dependencies if needed:
+
+```powershell
+python -m pip install reportlab pymupdf pillow pypdf pdfplumber
+```
+
+Generate the report:
+
+```powershell
+python scripts/build_project_report_pdf.py
+```
+
+Generated artifacts are written under `output/pdf/` and are intentionally ignored by Git.
+
+## Data and Demo Modes
+
+FactorPlatform supports real-data and fallback/demo states. Fallback output is meant to keep the demo usable when a backend, data source, or third-party widget is unavailable. The UI should clearly mark fallback or mock states as read-only or non-production data.
+
+Recommended demo principles:
+
+- Never present fallback data as live market truth.
+- Keep signal output framed as research support, not direct trading instruction.
+- Preserve signal dates, effective trade dates, data source labels, and freshness warnings.
+- Use backtests and attribution to validate hypotheses before any real-world decision.
+
+## Risk Disclaimer
+
+FactorPlatform is a research tool and decision-support system. It does not provide investment advice, does not guarantee returns, and should not be interpreted as a deterministic market prediction system. Users remain responsible for validating data, assumptions, model behavior, and regulatory obligations before making any investment or trading decision.

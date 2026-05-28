@@ -42,12 +42,126 @@ function toQuery(params: Record<string, string | number | undefined>): string {
   return raw ? `?${raw}` : "";
 }
 
+const demoSignals: Signal[] = [
+  {
+    signal_id: "demo_signal_001",
+    instrument: "510300.SH",
+    market: "CN",
+    asset_type: "ETF",
+    timeframe: "1D",
+    side: "LONG",
+    signal_time: "2026-05-21T10:00:00+08:00",
+    entry_type: "NEXT_BAR_OBSERVATION",
+    entry_price: 4.18,
+    stop_loss: 4.08,
+    take_profit: 4.32,
+    confidence: 0.82,
+    risk_level: "MEDIUM",
+    regime_label: "POST_SHOCK_REBOUND",
+    volatility_state: "HIGH_VOL",
+    tail_risk_state: "ELEVATED",
+    position_scale: 0.45,
+    reason_tags: ["post_shock_rebound", "liquidity_recovery_confirmed", "trend_strength_confirmed"],
+    status: "ACTIVE",
+    signal_template: "POST_SHOCK_REBOUND_LONG_V1",
+    expected_holding_bars: 8,
+    created_at: "2026-05-21T10:00:00+08:00",
+    updated_at: "2026-05-21T10:00:00+08:00",
+    score: 2.08,
+    score_percentile: 0.88,
+    effective_trade_date: "2026-05-22",
+  },
+  {
+    signal_id: "demo_signal_002",
+    instrument: "159915.SZ",
+    market: "CN",
+    asset_type: "ETF",
+    timeframe: "1D",
+    side: "LONG",
+    signal_time: "2026-05-21T10:30:00+08:00",
+    entry_type: "NEXT_BAR_OBSERVATION",
+    entry_price: 1.88,
+    stop_loss: 1.82,
+    take_profit: 1.98,
+    confidence: 0.74,
+    risk_level: "MEDIUM",
+    regime_label: "TREND_RISK_ON",
+    volatility_state: "NORMAL_VOL",
+    tail_risk_state: "NORMAL",
+    position_scale: 0.35,
+    reason_tags: ["trend_strength_confirmed", "volume_expansion", "candidate_pool_top_quantile"],
+    status: "MONITORED",
+    signal_template: "TREND_CONTINUATION_LONG_V2",
+    expected_holding_bars: 12,
+    created_at: "2026-05-21T10:30:00+08:00",
+    updated_at: "2026-05-21T10:30:00+08:00",
+    score: 1.62,
+    score_percentile: 0.79,
+    effective_trade_date: "2026-05-22",
+  },
+  {
+    signal_id: "demo_signal_003",
+    instrument: "000300.SH",
+    market: "CN",
+    asset_type: "INDEX",
+    timeframe: "1D",
+    side: "NEUTRAL",
+    signal_time: "2026-05-21T11:00:00+08:00",
+    entry_type: "OBSERVE_ONLY",
+    entry_price: 0,
+    stop_loss: 0,
+    take_profit: 0,
+    confidence: 0.61,
+    risk_level: "BLOCKED",
+    regime_label: "LIQUIDITY_SHOCK",
+    volatility_state: "EXTREME_VOL",
+    tail_risk_state: "EXTREME",
+    position_scale: 0,
+    reason_tags: ["shock_window_active", "liquidity_too_tight", "router_blocked_template"],
+    status: "BLOCKED",
+    signal_template: "OBSERVE_ONLY_CRISIS_V1",
+    expected_holding_bars: 0,
+    created_at: "2026-05-21T11:00:00+08:00",
+    updated_at: "2026-05-21T11:00:00+08:00",
+    score: 0.42,
+    score_percentile: 0.52,
+    effective_trade_date: "2026-05-22",
+    router_block_reason: "EXTREME_RISK_BLOCKED",
+  },
+];
+
+function demoPaginated(items = demoSignals): Paginated<Signal> {
+  return {
+    items,
+    page: 1,
+    page_size: items.length,
+    total: items.length,
+    has_more: false,
+    status: "DEMO_FALLBACK",
+    generated_at: "2026-05-21T15:56:01Z",
+    signal_date: "2026-05-21",
+    data_source: { universe: "csi300" },
+    data_health: { blocking_status: "WARN", message: "信号源暂不可用，当前展示只读演示快照。" },
+    counts: {
+      live_active_count: items.filter((item) => item.status === "ACTIVE").length,
+      router_blocked_count: items.filter((item) => item.status === "BLOCKED").length,
+      shadow_count: items.filter((item) => item.status === "BLOCKED").length,
+    },
+    regime_freshness: {
+      regime_date: "2026-05-21",
+      signal_date: "2026-05-21",
+      freshness_lag_days: 0,
+      status: "WARN",
+    },
+  };
+}
+
 export function listLiveSignals(query: SignalQuery = {}) {
-  return fetchJson<Paginated<Signal>>(`/api/v1/signals/live${toQuery(query)}`);
+  return fetchJson<Paginated<Signal>>(`/api/v1/signals/live${toQuery(query)}`).catch(() => demoPaginated());
 }
 
 export function listShadowSignals(query: SignalQuery = {}) {
-  return fetchJson<Paginated<Signal>>(`/api/v1/signals/shadow${toQuery(query)}`);
+  return fetchJson<Paginated<Signal>>(`/api/v1/signals/shadow${toQuery(query)}`).catch(() => demoPaginated(demoSignals.filter((item) => item.status === "BLOCKED")));
 }
 
 export function refreshLiveSignals(payload: { provider_uri?: string; universe?: string; topn?: number; dry_run?: boolean } = {}) {
@@ -68,7 +182,47 @@ export function refreshLiveSignals(payload: { provider_uri?: string; universe?: 
 
 export function getSignalDetail(signalId: string, executionMode?: Extract<ExecutionMode, "live" | "shadow">) {
   return fetchJson<SignalDetail>(`/api/v1/signals/by-id/${signalId}${toQuery({ execution_mode: executionMode })}`).catch(() =>
-    fetchJson<SignalDetail>(`/api/v1/signals/${signalId}`),
+    fetchJson<SignalDetail>(`/api/v1/signals/${signalId}`).catch(() => {
+      const signal = demoSignals.find((item) => item.signal_id === signalId) || demoSignals[0];
+      return {
+        signal,
+        regime_snapshot: {
+          snapshot_time: "2026-05-21T15:56:01Z",
+          regime_label: signal.regime_label,
+          cpd_score: 0.72,
+          cluster_id: 3,
+          severity_score: 0.68,
+          volatility_state: signal.volatility_state,
+          liquidity_state: "TIGHT",
+          tail_risk_state: signal.tail_risk_state,
+          shock_proximity: "RECENT",
+          market_risk_level: signal.risk_level,
+        },
+        factor_contributions: [
+          { factor: "动量", contribution: 0.32, direction: "positive" },
+          { factor: "量能", contribution: 0.21, direction: "positive" },
+          { factor: "波动", contribution: -0.16, direction: "negative" },
+        ],
+        filter_results: {
+          allow_signal: signal.status !== "BLOCKED",
+          risk_level: signal.risk_level,
+          filter_reasons: signal.reason_tags,
+          suppressed_alternatives: [],
+        },
+        notification_logs: [{ time: signal.signal_time, channel: "system", title: "Signal snapshot ready", signal_id: signal.signal_id }],
+        performance_tracking: {
+          status: "PENDING_OUTCOME",
+          unrealized_pnl: null,
+          mfe: null,
+          mae: null,
+          bars_elapsed: 0,
+          execution_mode: signal.execution_mode,
+        },
+        outcome_status: "PENDING_OUTCOME",
+        outcome: null,
+        similar_signals: demoSignals,
+      };
+    }),
   );
 }
 
@@ -132,7 +286,18 @@ export function getPerformanceAttribution(executionMode: ExecutionMode = "live")
 }
 
 export function getRegimeCurrent() {
-  return fetchJson<RegimeSnapshot>("/api/v1/regime/current");
+  return fetchJson<RegimeSnapshot>("/api/v1/regime/current").catch(() => ({
+    snapshot_time: "2026-05-21T15:56:01Z",
+    regime_label: "POST_SHOCK_REBOUND",
+    cpd_score: 0.72,
+    cluster_id: 3,
+    severity_score: 0.68,
+    volatility_state: "HIGH_VOL",
+    liquidity_state: "TIGHT",
+    tail_risk_state: "ELEVATED",
+    market_risk_level: "MEDIUM",
+    shock_proximity: "RECENT",
+  }));
 }
 
 export function getRegimeHistory() {
@@ -178,17 +343,28 @@ export function getStrategyRouterHistory() {
 }
 
 export function getShockEvents() {
-  return fetchJson<{ items: ShockEvent[] }>("/api/v1/shocks");
+  return fetchJson<{ items: ShockEvent[] }>("/api/v1/shocks").catch(() => ({ items: [] }));
 }
 
 export function getNotificationLogs() {
   return fetchJson<{
     items: Array<{ time: string; channel: string; title: string; signal_id: string | null }>;
-  }>("/api/v1/notifications/logs");
+  }>("/api/v1/notifications/logs").catch(() => ({
+    items: [{ time: "2026-05-21T15:56:01Z", channel: "system", title: "信号快照已加载", signal_id: null }],
+  }));
 }
 
-export function getEnumsMeta() {
-  return fetchJson<EnumsMeta>("/api/v1/metadata/enums");
+export function getEnumsMeta(): Promise<EnumsMeta> {
+  return fetchJson<EnumsMeta>("/api/v1/metadata/enums").catch(() => ({
+    side: ["LONG", "SHORT", "NEUTRAL"],
+    risk_level: ["LOW", "MEDIUM", "HIGH", "BLOCKED"],
+    status: ["ACTIVE", "MONITORED", "BLOCKED"],
+    market: ["CN"],
+    asset_type: ["ETF", "INDEX", "STOCK"],
+    timeframe: ["1D"],
+    regime_label: ["POST_SHOCK_REBOUND", "TREND_RISK_ON", "LIQUIDITY_SHOCK"],
+    signal_template: ["POST_SHOCK_REBOUND_LONG_V1", "TREND_CONTINUATION_LONG_V2", "OBSERVE_ONLY_CRISIS_V1"],
+  }));
 }
 
 export function getSignalTemplates() {

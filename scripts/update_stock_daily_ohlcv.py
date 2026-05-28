@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import argparse
 import os
+import site
+import sys
 from datetime import date, datetime, timedelta
 from pathlib import Path
 
@@ -10,14 +12,38 @@ import pyarrow as pa
 import pyarrow.compute as pc
 import pyarrow.dataset as ds
 import pyarrow.parquet as pq
+
+
+def _prepare_windpy_path() -> None:
+    try:
+        user_site = site.getusersitepackages()
+        sys.path[:] = [p for p in sys.path if os.path.normcase(p) != os.path.normcase(user_site)]
+    except Exception:
+        pass
+    for candidate in [Path(r"D:\wind\x64"), Path(r"D:\wind\bin")]:
+        if (candidate / "WindPy.py").exists() and str(candidate) not in sys.path:
+            sys.path.insert(0, str(candidate))
+
+
 def _import_wind() -> object:
+    _prepare_windpy_path()
     import WindPy
 
     from WindPy import w
 
     r = w.start()
     if getattr(r, "ErrorCode", None) not in (0, None):
-        raise RuntimeError(f"Wind start failed: ErrorCode={r.ErrorCode}")
+        wind_errors = {
+            -40520005: "No Python API Authority",
+            -40520014: "Please log on iWind first",
+            -40520019: "Account restricted",
+            -40520004: "Login failed",
+            -40520008: "Timeout",
+            -40520009: "WBox lost",
+        }
+        error_code = int(r.ErrorCode)
+        message = wind_errors.get(error_code, "Start error")
+        raise RuntimeError(f"Wind start failed: ErrorCode={error_code} ({message})")
     return w
 
 
