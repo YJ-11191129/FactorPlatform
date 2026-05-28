@@ -1,4 +1,4 @@
-# FactorPlatform
+# AlphaSeek FactorPlatform
 
 FactorPlatform is an AI-assisted financial research and trading support platform. It is designed as a risk-aware research terminal for market intelligence, stock screening, strategy generation, backtesting, attribution, and data maintenance.
 
