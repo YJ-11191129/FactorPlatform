@@ -85,12 +85,14 @@ app/                     Backend application
 web/                     Next.js frontend
   src/app/               App Router pages
   src/components/        Shared layout, charts, visuals, and UI components
+  src/lib/demo/          Checked-in roadshow fixtures for Docker-only demos
   src/lib/               API clients, adapters, i18n, and feature flags
   src/types/             Frontend types
 
 scripts/                 Local run, health check, data refresh, and report scripts
 tests/                   Unit tests
 docs/                    Demo and operations documentation
+demo/                    Docker placeholder mounts and demo support files
 config/                  Config files
 strategy_library/        Strategy examples and templates
 ```
@@ -132,7 +134,65 @@ http://localhost:3001/dashboard
 docker compose up -d --build
 ```
 
-The compose stack includes Postgres, Redis, backend, worker, and frontend services. Review `docker-compose.yml` and environment variables before using it outside local development.
+The compose stack includes Postgres, Redis, backend, worker, and frontend services. The backend container waits for Postgres and Redis health checks, runs Alembic migrations through `scripts/init_db.py`, and syncs code factor metadata before serving traffic.
+
+Open:
+
+```text
+http://localhost:3000/dashboard
+http://localhost:8002/docs
+```
+
+Useful checks:
+
+```powershell
+docker compose ps
+docker compose exec -T postgres psql -U postgres -d factor_platform -c "\dt"
+powershell -ExecutionPolicy Bypass -File scripts/check_stack_health.ps1 -ApiKey LOCAL_ADMIN_KEY
+```
+
+Real market data mounts are optional and controlled by `FACTOR_PLATFORM_HOST_MCQLIB_DATA` and `FACTOR_PLATFORM_HOST_KAGGLE_DATA`; when they are not set, Docker uses the checked-in empty placeholder mount so the stack does not depend on this workstation's `D:` drive.
+
+### 4. Docker-only Roadshow
+
+Use this mode on a presentation computer that has Docker but no Python, Node.js, local database, qlib, or local market data:
+
+```powershell
+docker compose -f docker-compose.roadshow.yml up -d --build
+```
+
+Then open:
+
+```text
+http://localhost:3000/dashboard
+```
+
+Roadshow mode runs the full local stack: Postgres container, Redis container, FastAPI backend, Celery worker, and Next.js frontend. It also enables the checked-in fixture fallback from `web/src/lib/demo/roadshow-fixtures.json`, so read-heavy presentation pages remain available if optional market data or external AI providers are unavailable. The fixture data is synthetic and clearly labeled as demo data.
+
+If port `3000` is occupied, choose another host port:
+
+```powershell
+$env:FRONTEND_PORT=3010
+docker compose -f docker-compose.roadshow.yml up -d --build
+```
+
+For a Docker-only machine with mounted real data, set the optional host mounts before starting:
+
+```powershell
+$env:FACTOR_PLATFORM_HOST_MCQLIB_DATA="D:/mcQlib/data"
+$env:FACTOR_PLATFORM_HOST_KAGGLE_DATA="D:/Kaggle/data"
+docker compose -f docker-compose.roadshow.yml up -d --build
+```
+
+Useful roadshow commands:
+
+```powershell
+docker compose -f docker-compose.roadshow.yml ps
+docker compose -f docker-compose.roadshow.yml exec -T postgres psql -U postgres -d factor_platform -c "\dt"
+powershell -ExecutionPolicy Bypass -File scripts/check_stack_health.ps1 -ApiKey ROADSHOW_ADMIN_KEY
+docker compose -f docker-compose.roadshow.yml logs -f backend frontend
+docker compose -f docker-compose.roadshow.yml down
+```
 
 ## Environment Variables
 
@@ -155,6 +215,8 @@ Important variables:
 | `FACTOR_PLATFORM_PROVIDER_URI` | Local qlib CN data path. |
 | `FACTOR_PLATFORM_US_PROVIDER_URI` | Local qlib US data path. |
 | `FACTOR_PLATFORM_REAL_OHLCV_PATH` | Local OHLCV parquet path. |
+| `FACTOR_PLATFORM_HOST_MCQLIB_DATA` | Optional host directory mounted into Docker at `/data/mcqlib` for real qlib data. |
+| `FACTOR_PLATFORM_HOST_KAGGLE_DATA` | Optional host directory mounted into Docker at `/data/kaggle` for real OHLCV/parquet data. |
 | `LLM_PROVIDER` | AI provider selection, for example `deepseek` or `openai_compatible`. |
 | `LLM_BASE_URL` | OpenAI-compatible provider base URL. |
 | `LLM_API_KEY` | AI provider API key. Do not commit real keys. |

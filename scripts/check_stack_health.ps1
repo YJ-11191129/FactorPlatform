@@ -4,6 +4,7 @@ param(
     [string]$BackendHost = "127.0.0.1",
     [string]$FrontendHost = "127.0.0.1",
     [string]$LanHost = "",
+    [string]$ApiKey = "",
     [ValidateSet("auto","real","demo")]
     [string]$Mode = "auto",
     [switch]$UseWslProbe
@@ -51,7 +52,15 @@ function Env-Enabled {
 $backendBase = "http://$BackendHost`:$BackendPort"
 $frontendBase = "http://$FrontendHost`:$FrontendPort"
 $lanBase = if ([string]::IsNullOrWhiteSpace($LanHost)) { $null } else { "http://$LanHost`:$FrontendPort" }
-$apiKey = if (-not [string]::IsNullOrWhiteSpace($env:NEXT_PUBLIC_API_KEY)) { $env:NEXT_PUBLIC_API_KEY } else { "LOCAL_ADMIN_KEY" }
+$apiKey = if (-not [string]::IsNullOrWhiteSpace($ApiKey)) {
+    $ApiKey
+} elseif (-not [string]::IsNullOrWhiteSpace($env:NEXT_PUBLIC_API_KEY)) {
+    $env:NEXT_PUBLIC_API_KEY
+} elseif (-not [string]::IsNullOrWhiteSpace($env:FACTOR_PLATFORM_VIEW_KEY)) {
+    $env:FACTOR_PLATFORM_VIEW_KEY
+} else {
+    "LOCAL_ADMIN_KEY"
+}
 $apiHeaders = @{ "X-API-Key" = $apiKey }
 $healthJson = Get-Json -Url "$backendBase/health"
 $latestSignals = Get-Json -Url "$backendBase/api/v1/signals/live?page=1&page_size=1" -Headers $apiHeaders

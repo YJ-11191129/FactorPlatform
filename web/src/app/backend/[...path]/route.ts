@@ -1,8 +1,12 @@
 import fs from "node:fs";
 import { NextResponse } from "next/server";
 
+import roadshowFixtures from "@/lib/demo/roadshow-fixtures.json";
+
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
+
+type RoadshowStrategySpec = typeof roadshowFixtures.strategy_ai.spec;
 
 function json(data: unknown, status = 200) {
   return new NextResponse(JSON.stringify(data), {
@@ -28,6 +32,68 @@ function paginated<T>(items: T[], page = 1, pageSize = items.length) {
   };
 }
 
+function roadshowValidation(spec: RoadshowStrategySpec = roadshowFixtures.strategy_ai.spec) {
+  return {
+    ...roadshowFixtures.strategy_ai.validation,
+    normalized_spec: spec,
+  };
+}
+
+function roadshowGeneratedStrategy() {
+  const spec = roadshowFixtures.strategy_ai.spec;
+  return {
+    spec,
+    validation: roadshowValidation(spec),
+    provider: "roadshow",
+    llm_ready: false,
+    used_fallback: true,
+    raw_model_output: null,
+  };
+}
+
+function roadshowBacktestResult() {
+  return {
+    backtest_id: "roadshow_ai_bt_001",
+    created_at: nowIso(),
+    summary: {
+      ...roadshowFixtures.strategy_ai.backtest_summary,
+      strategy_id: "roadshow_ai_strategy",
+      strategy_name: roadshowFixtures.strategy_ai.spec.name,
+      initial_cash: 1000000,
+      fee_bps: roadshowFixtures.strategy_ai.spec.execution.fee_bps,
+      use_adj: true,
+      universe_size: 300,
+      data_health: {
+        blocking_status: "WARN",
+        message: "Roadshow mode uses checked-in synthetic fixture data. Validate with production data before research use.",
+        source_id: "roadshow_fixture",
+      },
+    },
+    validation: roadshowValidation(),
+    data_health: {
+      blocking_status: "WARN",
+      message: "Roadshow mode uses checked-in synthetic fixture data. Validate with production data before research use.",
+      source_id: "roadshow_fixture",
+    },
+  };
+}
+
+function roadshowMacroContext(topic: string | null, event: string | null, region: string | null, horizon: string | null) {
+  return {
+    topic: topic || "market regime",
+    event: event || undefined,
+    region: region || "CN",
+    horizon: horizon || "weeks",
+    generated_at: nowIso(),
+    data_sources: { fixture: roadshowFixtures.meta.data_source },
+    notes: [roadshowFixtures.meta.disclaimer],
+  };
+}
+
+function roadshowTopic(search: URLSearchParams) {
+  return search.get("topic") || "market regime";
+}
+
 function mockResponse(pathname: string, search: URLSearchParams): NextResponse | null {
   const baseNow = nowIso();
   if (pathname === "/health") {
@@ -41,16 +107,80 @@ function mockResponse(pathname: string, search: URLSearchParams): NextResponse |
 
   if (pathname === "/api/v1/strategy-ai/providers") {
     return json({
-      default_provider: "demo",
+      default_provider: "roadshow",
       providers: [
         {
-          name: "demo",
-          model: "mock-readonly",
-          endpoint: "demo://fallback",
+          name: "roadshow",
+          model: "checked-in-fixture",
+          endpoint: "demo://roadshow",
           ready: true,
-          reason: "Read-only demo fallback; live LLM providers remain on the host machine.",
+          reason: "Read-only roadshow fixture; live LLM providers are not required.",
         },
       ],
+    });
+  }
+
+  if (pathname === "/api/v1/strategy-ai/generate") {
+    return json(roadshowGeneratedStrategy());
+  }
+
+  if (pathname === "/api/v1/strategy-ai/validate") {
+    return json(roadshowValidation());
+  }
+
+  if (pathname === "/api/v1/strategy-ai/backtest") {
+    return json(roadshowBacktestResult());
+  }
+
+  if (pathname === "/api/v1/macro/chain-of-impact") {
+    const topic = roadshowTopic(search);
+    return json({
+      inputs: { topic, event: search.get("event"), region: search.get("region") || "CN", horizon: search.get("horizon") || "weeks" },
+      context: roadshowMacroContext(topic, search.get("event"), search.get("region"), search.get("horizon")),
+      llm_ready: false,
+      llm_provider: { provider: "roadshow", model: "checked-in-fixture", endpoint: "demo://roadshow", ready: true },
+      result: roadshowFixtures.macro.chain,
+    });
+  }
+
+  if (pathname === "/api/v1/macro/topic-report") {
+    const topic = roadshowTopic(search);
+    return json({
+      inputs: { topic, event: search.get("event"), region: search.get("region") || "CN", horizon: search.get("horizon") || "weeks" },
+      context: roadshowMacroContext(topic, search.get("event"), search.get("region"), search.get("horizon")),
+      llm_ready: false,
+      llm_provider: { provider: "roadshow", model: "checked-in-fixture", endpoint: "demo://roadshow", ready: true },
+      result: roadshowFixtures.macro.report,
+    });
+  }
+
+  if (pathname === "/api/v1/news/search" || pathname === "/api/v1/news/summary") {
+    const topic = roadshowTopic(search);
+    return json({
+      topic,
+      source: "roadshow_fixture",
+      request_url: "",
+      fetched_at: baseNow,
+      items: roadshowFixtures.macro.news.items,
+      count: roadshowFixtures.macro.news.items.length,
+      latency_ms: 0,
+      warnings: [roadshowFixtures.meta.disclaimer],
+      summary: {
+        highlights: roadshowFixtures.macro.news.highlights,
+        sources: { "Roadshow public-news fixture": roadshowFixtures.macro.news.items.length },
+      },
+    });
+  }
+
+  if (pathname === "/api/factors/run-demo") {
+    return json({
+      factor_name: "ROADSHOW_FACTOR_SCREEN",
+      row_count: roadshowFixtures.factors.run_preview.length,
+      columns: ["trade_date", "asset_code", "factor_value", "rank"],
+      preview: roadshowFixtures.factors.run_preview,
+      message: "Roadshow fixture data; read-only synthetic sample.",
+      calc_batch_id: "roadshow_factor_run_001",
+      download_url: null,
     });
   }
 
@@ -558,6 +688,22 @@ async function proxy(req: Request, ctx: { params: { path: string[] } }) {
     const pathname = `/${path.join("/")}`;
     const method = req.method.toUpperCase();
 
+    if (shouldForceMock()) {
+      const mock = mockResponse(pathname, url.searchParams);
+      if (mock) return mock;
+      if (demoReadOnlyEnabled() && !["GET", "HEAD", "OPTIONS"].includes(method)) {
+        return json(
+          {
+            error: "DEMO_READ_ONLY",
+            detail: "Roadshow demo is read-only and this mutation has no fixture response.",
+            mode: "DEMO_FALLBACK",
+          },
+          423,
+        );
+      }
+      return json({ error: "MOCK_NOT_AVAILABLE", pathname }, 404);
+    }
+
     if (demoReadOnlyEnabled() && !["GET", "HEAD", "OPTIONS"].includes(method)) {
       return json(
         {
@@ -567,12 +713,6 @@ async function proxy(req: Request, ctx: { params: { path: string[] } }) {
         },
         423,
       );
-    }
-
-    if (shouldForceMock()) {
-      const mock = mockResponse(pathname, url.searchParams);
-      if (mock) return mock;
-      return json({ error: "MOCK_NOT_AVAILABLE", pathname }, 404);
     }
     const origin = backendOrigin();
     const target = new URL(pathname, origin);

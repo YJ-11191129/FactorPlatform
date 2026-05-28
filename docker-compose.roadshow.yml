@@ -1,25 +1,28 @@
-x-backend-env: &backend-env
-  DATABASE_URL: postgresql+psycopg://postgres:${POSTGRES_PASSWORD:-factorplatform_dev_password}@postgres:5432/factor_platform
+name: factorplatform-roadshow
+
+x-roadshow-backend-env: &roadshow-backend-env
+  DATABASE_URL: postgresql+psycopg://postgres:${POSTGRES_PASSWORD:-factorplatform_roadshow_password}@postgres:5432/factor_platform
   REDIS_URL: redis://redis:6379/0
-  FACTOR_PLATFORM_ENV: ${FACTOR_PLATFORM_ENV:-dev}
+  FACTOR_PLATFORM_ENV: roadshow
   FACTOR_PLATFORM_REQUIRE_DB: "1"
   FACTOR_PLATFORM_REQUIRE_AUTH: "1"
-  FACTOR_PLATFORM_API_KEYS: ${FACTOR_PLATFORM_API_KEYS:-LOCAL_ADMIN_KEY:admin,LOCAL_VIEW_KEY:viewer}
+  FACTOR_PLATFORM_API_KEYS: ${FACTOR_PLATFORM_API_KEYS:-ROADSHOW_ADMIN_KEY:admin,ROADSHOW_VIEW_KEY:viewer}
   FACTOR_PLATFORM_PROVIDER_URI: /data/mcqlib/qlib_bin/cn_data
   FACTOR_PLATFORM_US_PROVIDER_URI: /data/mcqlib/qlib_bin/us_data
   FACTOR_PLATFORM_REAL_OHLCV_PATH: /data/kaggle/wind_data/02_daily_stock/stock_daily_ohlcv.parquet
 
 services:
   postgres:
+    profiles: ["real-data"]
     image: postgres:16
     environment:
       POSTGRES_DB: factor_platform
       POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-factorplatform_dev_password}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-factorplatform_roadshow_password}
     ports:
       - "${POSTGRES_PORT:-5432}:5432"
     volumes:
-      - pgdata:/var/lib/postgresql/data
+      - roadshow_pgdata:/var/lib/postgresql/data
     restart: unless-stopped
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
@@ -29,6 +32,7 @@ services:
       start_period: 10s
 
   redis:
+    profiles: ["real-data"]
     image: redis:7-alpine
     ports:
       - "${REDIS_PORT:-6379}:6379"
@@ -41,12 +45,13 @@ services:
       start_period: 5s
 
   backend:
-    image: factorplatform-backend:latest
+    profiles: ["real-data"]
+    image: factorplatform-roadshow-backend:latest
     build:
       context: .
       dockerfile: Dockerfile.backend
     environment:
-      <<: *backend-env
+      <<: *roadshow-backend-env
     ports:
       - "${BACKEND_PORT:-8002}:8000"
     volumes:
@@ -67,13 +72,14 @@ services:
       start_period: 30s
 
   worker:
-    image: factorplatform-backend:latest
+    profiles: ["real-data"]
+    image: factorplatform-roadshow-backend:latest
     build:
       context: .
       dockerfile: Dockerfile.backend
     command: ["sh","-lc","celery -A app.tasks.celery_app.celery_app worker -l info"]
     environment:
-      <<: *backend-env
+      <<: *roadshow-backend-env
     volumes:
       - ./data:/app/data
       - ${FACTOR_PLATFORM_HOST_MCQLIB_DATA:-./demo/empty}:/data/mcqlib:ro
@@ -88,29 +94,29 @@ services:
     restart: unless-stopped
 
   frontend:
-    image: factorplatform-frontend:latest
+    image: factorplatform-roadshow-frontend:latest
     build:
       context: .
       dockerfile: Dockerfile.frontend
       args:
-        NEXT_PUBLIC_API_KEY: ${NEXT_PUBLIC_API_KEY:-LOCAL_ADMIN_KEY}
-        NEXT_PUBLIC_ALLOW_MOCK_FALLBACK: ${NEXT_PUBLIC_ALLOW_MOCK_FALLBACK:-0}
-        NEXT_PUBLIC_DEMO_READONLY: ${NEXT_PUBLIC_DEMO_READONLY:-0}
-        NEXT_PUBLIC_MOCK_BACKEND: ${NEXT_PUBLIC_MOCK_BACKEND:-0}
-        NEXT_PUBLIC_API_BASE_PATH: ${NEXT_PUBLIC_API_BASE_PATH:-/backend}
+        NEXT_PUBLIC_API_KEY: ${NEXT_PUBLIC_API_KEY:-ROADSHOW_VIEW_KEY}
+        NEXT_PUBLIC_ALLOW_MOCK_FALLBACK: "1"
+        NEXT_PUBLIC_DEMO_READONLY: ${NEXT_PUBLIC_DEMO_READONLY:-1}
+        NEXT_PUBLIC_MOCK_BACKEND: ${NEXT_PUBLIC_MOCK_BACKEND:-1}
+        NEXT_PUBLIC_API_BASE_PATH: /backend
     environment:
       BACKEND_ORIGIN: http://backend:8000
-      FACTOR_PLATFORM_VIEW_KEY: ${NEXT_PUBLIC_API_KEY:-LOCAL_ADMIN_KEY}
-      NEXT_PUBLIC_API_KEY: ${NEXT_PUBLIC_API_KEY:-LOCAL_ADMIN_KEY}
-      NEXT_PUBLIC_ALLOW_MOCK_FALLBACK: ${NEXT_PUBLIC_ALLOW_MOCK_FALLBACK:-0}
-      NEXT_PUBLIC_DEMO_READONLY: ${NEXT_PUBLIC_DEMO_READONLY:-0}
-      NEXT_PUBLIC_MOCK_BACKEND: ${NEXT_PUBLIC_MOCK_BACKEND:-0}
-      NEXT_PUBLIC_API_BASE_PATH: ${NEXT_PUBLIC_API_BASE_PATH:-/backend}
+      FACTOR_PLATFORM_VIEW_KEY: ${NEXT_PUBLIC_API_KEY:-ROADSHOW_VIEW_KEY}
+      FACTOR_PLATFORM_ALLOW_MOCK_FALLBACK: "1"
+      FACTOR_PLATFORM_DEMO_READONLY: ${FACTOR_PLATFORM_DEMO_READONLY:-1}
+      FACTOR_PLATFORM_MOCK_BACKEND: ${FACTOR_PLATFORM_MOCK_BACKEND:-1}
+      NEXT_PUBLIC_API_KEY: ${NEXT_PUBLIC_API_KEY:-ROADSHOW_VIEW_KEY}
+      NEXT_PUBLIC_ALLOW_MOCK_FALLBACK: "1"
+      NEXT_PUBLIC_DEMO_READONLY: ${NEXT_PUBLIC_DEMO_READONLY:-1}
+      NEXT_PUBLIC_MOCK_BACKEND: ${NEXT_PUBLIC_MOCK_BACKEND:-1}
+      NEXT_PUBLIC_API_BASE_PATH: /backend
     ports:
       - "${FRONTEND_PORT:-3000}:3000"
-    depends_on:
-      backend:
-        condition: service_healthy
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/dashboard').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
@@ -120,5 +126,4 @@ services:
       start_period: 30s
 
 volumes:
-  pgdata:
-
+  roadshow_pgdata:

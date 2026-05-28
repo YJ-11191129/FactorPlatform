@@ -1,0 +1,163 @@
+{
+  "meta": {
+    "mode": "ROADSHOW_DEMO",
+    "generated_at": "2026-05-28T15:30:00+08:00",
+    "data_source": "checked-in roadshow fixtures",
+    "disclaimer": "Read-only synthetic demo data for project presentation. Not financial advice."
+  },
+  "strategy_ai": {
+    "spec": {
+      "name": "Roadshow Multi-Factor Risk Screen",
+      "description": "A demo-only volatility-aware stock screening strategy with explicit timing, turnover, and stop-loss controls.",
+      "asset_class": "equity",
+      "universe": ["csi300"],
+      "timeframe": "1d",
+      "direction": "long_only",
+      "indicators": [
+        { "type": "ema", "name": "ema_20", "field": "close", "window": 20, "params": {} },
+        { "type": "ema", "name": "ema_60", "field": "close", "window": 60, "params": {} },
+        { "type": "momentum", "name": "momentum_20", "field": "close", "window": 20, "params": {} },
+        { "type": "volatility", "name": "volatility_20", "field": "close", "window": 20, "params": {} },
+        { "type": "atr", "name": "atr_14", "field": "close", "window": 14, "params": {} }
+      ],
+      "entry_rules": ["ema_20 > ema_60", "momentum_20 > 0", "volatility_20 < 0.035"],
+      "exit_rules": ["ema_20 < ema_60", "momentum_20 < -0.015"],
+      "ranking": "momentum_20",
+      "risk": {
+        "max_position_pct": 0.18,
+        "max_positions": 8,
+        "stop_loss": true,
+        "stop_loss_atr_multiple": 2.2,
+        "take_profit": false,
+        "notes": [
+          "Signals are formed after close and executed on the next bar.",
+          "Position size is capped for roadshow risk-control illustration."
+        ]
+      },
+      "execution": {
+        "signal_time": "close_t",
+        "trade_time": "next_bar",
+        "fee_bps": 5,
+        "slippage_bps": 2,
+        "rebalance_frequency": "1d"
+      },
+      "assumptions": [
+        "Synthetic roadshow fixture; not live market data.",
+        "One-bar execution delay is required to avoid look-ahead bias."
+      ],
+      "rationale": [
+        "Trend filter reduces exposure during weak regimes.",
+        "Momentum ranking selects stronger candidates among eligible assets.",
+        "Volatility cap is used as a risk gate rather than a return promise."
+      ],
+      "disclaimer": "For research demonstration only. This is not financial advice."
+    },
+    "validation": {
+      "is_valid": true,
+      "issues": [
+        {
+          "severity": "warning",
+          "code": "DEMO_DATA",
+          "message": "Roadshow fixture uses synthetic data; validate with production qlib/Wind data before research use.",
+          "field": "data_source"
+        }
+      ],
+      "timing_assumptions": [
+        "close_t signals, next_bar execution",
+        "5 bps fee plus 2 bps slippage in the roadshow fixture"
+      ],
+      "supported_features": ["daily long_only", "ema", "momentum", "volatility", "atr", "ranking"],
+      "disclaimer": "Backtest output is for research and risk identification only; not investment advice."
+    },
+    "backtest_summary": {
+      "metrics": {
+        "total_return": 0.084,
+        "annual_return": 0.112,
+        "annual_vol": 0.176,
+        "sharpe": 0.88,
+        "max_drawdown": -0.061,
+        "avg_daily_turnover": 0.18,
+        "total_transaction_cost": 4200
+      },
+      "price_data_source": {
+        "kind": "roadshow_fixture",
+        "source_id": "roadshow_synthetic_daily",
+        "region": "cn",
+        "provider_uri": "demo://roadshow"
+      },
+      "timing_note": "Roadshow signals use one-bar delayed execution.",
+      "execution_model": {
+        "signal_timestamp": "close_t",
+        "execution_delay": "one_bar",
+        "return_alignment": "positions from t-1 are applied to close-to-close returns on t",
+        "cost_model": "5 bps fee plus 2 bps slippage"
+      },
+      "diagnostics": {
+        "price_start_date": "2026-04-01",
+        "price_end_date": "2026-05-21",
+        "simulated_asset_count": 300,
+        "normalized_position_rows": 3000
+      }
+    }
+  },
+  "macro": {
+    "chain": {
+      "regime_hypothesis": "The topic may shift market risk appetite through policy expectations, supply-chain repricing, and volatility repricing. Current output is suitable for scenario analysis, not direct trading instruction.",
+      "cause": [
+        "Public news flow increased around the selected topic.",
+        "Sector expectations may be repriced before fundamentals are confirmed.",
+        "Volume, volatility, and policy confirmation remain the key validation gates."
+      ],
+      "transmission": [
+        { "step": "Event verification", "channel": "News and official releases", "who": "Listed companies and policy bodies", "timeframe": "Intraday to 1 day" },
+        { "step": "Expectation repricing", "channel": "Theme capital and sector valuation", "who": "Related sectors and ETFs", "timeframe": "Several days" },
+        { "step": "Risk validation", "channel": "Volatility and breadth", "who": "Broad market and factor portfolios", "timeframe": "1-2 weeks" }
+      ],
+      "impact": {
+        "assets": [
+          { "name": "CSI 300 ETF", "direction": "mixed", "confidence": 0.58 },
+          { "name": "Semiconductor leaders", "direction": "up", "confidence": 0.64 },
+          { "name": "USD/CNH", "direction": "mixed", "confidence": 0.52 }
+        ],
+        "sectors": [
+          { "name": "Advanced manufacturing", "direction": "up", "confidence": 0.66 },
+          { "name": "High beta growth", "direction": "mixed", "confidence": 0.55 }
+        ],
+        "signals_to_watch": ["volume expansion", "breadth confirmation", "volatility compression", "policy or earnings confirmation"]
+      },
+      "risks": ["headline misread", "gap-up fade", "liquidity shock", "policy timing mismatch"],
+      "assumptions": ["Read-only roadshow fixture", "Used for research and risk identification only"],
+      "confidence": 0.62
+    },
+    "report": {
+      "executive_summary": "The selected macro topic should be interpreted through a chain of evidence: news credibility, policy or corporate confirmation, sector mapping, and market microstructure confirmation. The platform frames it as a research hypothesis with explicit risk gates.",
+      "drivers": ["news momentum", "policy expectation", "sector valuation", "liquidity and volatility state"],
+      "market_dashboard": [
+        { "metric": "News heat", "value": "Elevated", "interpretation": "Requires source and follow-through verification." },
+        { "metric": "Risk regime", "value": "Medium-high", "interpretation": "Position sizing should remain conservative in a demo scenario." },
+        { "metric": "Actionability", "value": "Observe / test", "interpretation": "Generate and backtest strategies before any production research use." }
+      ],
+      "watchlist": ["related ETFs", "sector leaders", "volume confirmation", "volatility regime", "policy releases"],
+      "disclaimer": "For research demonstration only. This is not financial advice."
+    },
+    "news": {
+      "items": [
+        { "title": "Policy expectations drive renewed attention to advanced manufacturing themes", "link": "", "source": "Roadshow public-news fixture", "published_at": "2026-05-28T09:30:00+08:00" },
+        { "title": "Market breadth improves but volatility confirmation remains mixed", "link": "", "source": "Roadshow public-news fixture", "published_at": "2026-05-28T10:15:00+08:00" },
+        { "title": "Institutional desks focus on risk control and scenario-based allocation", "link": "", "source": "Roadshow public-news fixture", "published_at": "2026-05-28T11:00:00+08:00" }
+      ],
+      "highlights": [
+        "News heat is elevated but still requires confirmation.",
+        "Risk regime remains mixed, so the platform keeps output in observe/test mode.",
+        "The workflow connects macro events to candidate assets, risk gates, and backtestable strategy hypotheses."
+      ]
+    }
+  },
+  "factors": {
+    "run_preview": [
+      { "trade_date": "2026-05-18", "asset_code": "300750.SZ", "factor_value": 1.43, "rank": 1 },
+      { "trade_date": "2026-05-18", "asset_code": "300760.SZ", "factor_value": 1.21, "rank": 2 },
+      { "trade_date": "2026-05-18", "asset_code": "600519.SH", "factor_value": 0.94, "rank": 3 }
+    ]
+  }
+}
