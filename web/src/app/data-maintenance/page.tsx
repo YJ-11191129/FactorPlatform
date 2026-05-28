@@ -5,6 +5,7 @@ import type { ColumnsType } from "antd/es/table";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { PageContainer } from "@/components/layout/PageContainer";
+import { useAdvancedMode } from "@/lib/advanced-mode";
 import {
   getDataPathAudit,
   getLatestDataMaintenanceReport,
@@ -14,7 +15,6 @@ import {
   type DataSourceStatus,
   type RunDailyMaintenancePayload,
 } from "@/lib/api/data-maintenance";
-import { useLanguage } from "@/lib/i18n";
 
 import styles from "./data-maintenance.module.css";
 
@@ -48,10 +48,14 @@ function errorText(error: unknown, fallback: string) {
   return fallback;
 }
 
+function artifactLabel(run?: DataMaintenanceRun | null, advancedMode?: boolean) {
+  if (!run?.artifacts) return "-";
+  if (advancedMode) return run.artifacts.markdown_path || run.artifacts.json_path || "registered";
+  return "registered";
+}
+
 export default function DataMaintenancePage() {
-  const { language } = useLanguage();
-  const zh = language === "zh";
-  const t = useCallback((cn: string, en: string) => (zh ? cn : en), [zh]);
+  const [advancedMode] = useAdvancedMode();
   const [audit, setAudit] = useState<DataPathAudit | null>(null);
   const [run, setRun] = useState<DataMaintenanceRun | null>(null);
   const [latestReport, setLatestReport] = useState<DataMaintenanceRun | null>(null);
@@ -73,11 +77,11 @@ export default function DataMaintenancePage() {
     try {
       setAudit(await getDataPathAudit());
     } catch (e) {
-      setError(errorText(e, t("数据路径审计失败", "Data path audit failed")));
+      setError(errorText(e, "Data audit failed"));
     } finally {
       setLoading(false);
     }
-  }, [t]);
+  }, []);
 
   useEffect(() => {
     load();
@@ -92,9 +96,9 @@ export default function DataMaintenancePage() {
       setRun(out);
       setLatestReport(out);
       setAudit(out.audit);
-      message.success(t("每日维护已完成", "Daily maintenance completed"));
+      message.success("Daily maintenance completed");
     } catch (e) {
-      const text = errorText(e, t("每日维护执行失败", "Daily maintenance failed"));
+      const text = errorText(e, "Daily maintenance failed");
       setError(text);
       message.error(text);
     } finally {
@@ -114,65 +118,67 @@ export default function DataMaintenancePage() {
   const columns: ColumnsType<DataSourceStatus> = useMemo(
     () => [
       {
-        title: t("状态", "Status"),
+        title: "Status",
         dataIndex: "status",
         width: 92,
         render: (value) => <Tag color={statusColor(String(value))}>{String(value)}</Tag>,
       },
       {
-        title: t("门禁", "Gate"),
+        title: "Gate",
         dataIndex: "is_blocking",
         width: 94,
         render: (value, record) => (value ? <Tag color="red">BLOCKING</Tag> : <Tag>{record.source_id === "openbb_sdk" ? "EVIDENCE" : "INFO"}</Tag>),
       },
       {
-        title: t("数据源", "Source"),
+        title: "Source",
         dataIndex: "label",
-        width: 210,
+        width: 230,
         render: (_, record) => (
           <Space direction="vertical" size={0}>
             <Typography.Text strong>{record.label}</Typography.Text>
-            <Typography.Text type="secondary">{record.source_id}</Typography.Text>
+            {advancedMode ? <Typography.Text type="secondary">{record.source_id}</Typography.Text> : null}
           </Space>
         ),
       },
       {
-        title: t("路径", "Path"),
+        title: advancedMode ? "Path" : "Storage",
         dataIndex: "path",
         ellipsis: true,
-        render: (value) => <Typography.Text copyable>{String(value)}</Typography.Text>,
+        render: (value, record) =>
+          advancedMode ? (
+            <Typography.Text copyable>{String(value)}</Typography.Text>
+          ) : (
+            <Typography.Text>{(record as any).database_backed ? "PostgreSQL" : String(record.kind || "local storage")}</Typography.Text>
+          ),
       },
-      { title: t("最新日期", "Latest"), dataIndex: "end_date", width: 112, render: (value) => value || "-" },
-      { title: t("滞后天数", "Lag"), dataIndex: "days_since_latest", width: 90, render: formatNumber },
-      { title: t("行数", "Rows"), dataIndex: "row_count", width: 110, render: formatNumber },
-      { title: t("标的数", "Assets"), dataIndex: "asset_count", width: 90, render: formatNumber },
-      { title: t("大小", "Size"), dataIndex: "file_size_bytes", width: 100, render: formatBytes },
+      { title: "Latest", dataIndex: "end_date", width: 112, render: (value) => value || "-" },
+      { title: "Lag", dataIndex: "days_since_latest", width: 90, render: formatNumber },
+      { title: "Rows", dataIndex: "row_count", width: 120, render: formatNumber },
+      { title: "Assets", dataIndex: "asset_count", width: 90, render: formatNumber },
+      { title: "Size", dataIndex: "file_size_bytes", width: 100, render: formatBytes },
     ],
-    [t],
+    [advancedMode],
   );
 
+  const visibleRun = run || latestReport;
   const sourceCount = audit?.sources.length || 0;
   const okCount = audit?.status_counts.OK || 0;
   const staleCount = audit?.status_counts.STALE || 0;
   const missingCount = audit?.status_counts.MISSING || 0;
   const blockers = audit?.blockers || [];
   const recommendations = audit?.recommendations || [];
-  const visibleRun = run || latestReport;
 
   return (
     <PageContainer
-      title={t("数据维护", "Data Maintenance")}
-      subtitle={t(
-        "统一检查 qlib、Wind 日线、宏观状态和财报数据地址，并执行每日派生产物刷新。",
-        "Audit qlib, Wind daily, macro, and financial data paths, then run daily derived refresh tasks.",
-      )}
+      title="Data Maintenance"
+      subtitle="Audit database-backed market data, freshness, and derived research artifacts."
       extra={
         <Space>
           <Button onClick={load} loading={loading}>
-            {t("刷新审计", "Refresh Audit")}
+            Refresh Audit
           </Button>
           <Button type="primary" onClick={() => runMaintenance()} loading={running}>
-            {t("运行每日维护", "Run Daily Maintenance")}
+            Run Daily Maintenance
           </Button>
         </Space>
       }
@@ -182,140 +188,93 @@ export default function DataMaintenancePage() {
         <section className={styles.hero}>
           <div>
             <Typography.Title level={1} className={styles.heroTitle}>
-              {t("数据地址体检与每日刷新", "Data Path Health & Daily Refresh")}
+              Data Health and Refresh
             </Typography.Title>
             <Typography.Paragraph className={styles.heroText}>
-              {t(
-                "默认不改写原始数据，只刷新 factor registry、股票筛选产物，并跑一次 Stock Radar smoke test。外部下载脚本需要通过环境变量显式配置。",
-                "By default this does not mutate raw data. It refreshes factor registry, stock-screen artifacts, and runs a Stock Radar smoke test. External downloaders must be explicitly configured by environment variable.",
-              )}
+              Roadshow mode reads market data from PostgreSQL and keeps generated reports in the artifact registry. Warnings are surfaced without presenting stale data as live market truth.
             </Typography.Paragraph>
           </div>
           <div className={styles.metricGrid}>
-            <div><span>{t("数据源", "Sources")}</span><strong>{sourceCount}</strong></div>
+            <div><span>Sources</span><strong>{sourceCount}</strong></div>
             <div><span>OK</span><strong>{okCount}</strong></div>
-            <div><span>{t("过期", "Stale")}</span><strong>{staleCount}</strong></div>
-            <div><span>{t("缺失", "Missing")}</span><strong>{missingCount}</strong></div>
+            <div><span>Stale</span><strong>{staleCount}</strong></div>
+            <div><span>Missing</span><strong>{missingCount}</strong></div>
           </div>
         </section>
 
-        <Card title={t("维护选项", "Maintenance Options")}>
+        <Card title="Maintenance Options">
           <Space wrap>
-            <Checkbox checked={options.dry_run} onChange={(e) => setOptions((v) => ({ ...v, dry_run: e.target.checked }))}>
-              {t("仅演练", "Dry run")}
-            </Checkbox>
-            <Checkbox checked={options.refresh_factor_registry} onChange={(e) => setOptions((v) => ({ ...v, refresh_factor_registry: e.target.checked }))}>
-              {t("刷新因子注册表", "Refresh factor registry")}
-            </Checkbox>
-            <Checkbox checked={options.refresh_stock_screen} onChange={(e) => setOptions((v) => ({ ...v, refresh_stock_screen: e.target.checked }))}>
-              {t("刷新股票筛选", "Refresh stock screen")}
-            </Checkbox>
-            <Checkbox checked={options.run_radar_smoke} onChange={(e) => setOptions((v) => ({ ...v, run_radar_smoke: e.target.checked }))}>
-              {t("运行雷达 smoke test", "Run radar smoke test")}
-            </Checkbox>
-            <Checkbox checked={options.run_external_updater} onChange={(e) => setOptions((v) => ({ ...v, run_external_updater: e.target.checked }))}>
-              {t("运行外部更新脚本", "Run external updater")}
-            </Checkbox>
+            <Checkbox checked={options.dry_run} onChange={(e) => setOptions((v) => ({ ...v, dry_run: e.target.checked }))}>Dry run</Checkbox>
+            <Checkbox checked={options.refresh_factor_registry} onChange={(e) => setOptions((v) => ({ ...v, refresh_factor_registry: e.target.checked }))}>Refresh factor registry</Checkbox>
+            <Checkbox checked={options.refresh_stock_screen} onChange={(e) => setOptions((v) => ({ ...v, refresh_stock_screen: e.target.checked }))}>Refresh stock screen</Checkbox>
+            <Checkbox checked={options.run_radar_smoke} onChange={(e) => setOptions((v) => ({ ...v, run_radar_smoke: e.target.checked }))}>Run radar smoke test</Checkbox>
+            <Checkbox checked={options.run_external_updater} onChange={(e) => setOptions((v) => ({ ...v, run_external_updater: e.target.checked }))}>Run external updater</Checkbox>
           </Space>
         </Card>
 
-        <Card
-          title={t("运行门禁", "Run Gate")}
-          extra={
-            <Tag color={audit?.blocking_status === "BLOCKED" ? "red" : audit?.blocking_status === "WARN" ? "gold" : "green"}>
-              {audit?.blocking_status || "UNKNOWN"}
-            </Tag>
-          }
-        >
+        <Card title="Run Gate" extra={<Tag color={audit?.blocking_status === "BLOCKED" ? "red" : audit?.blocking_status === "WARN" ? "gold" : "green"}>{audit?.blocking_status || "UNKNOWN"}</Tag>}>
           <Space direction="vertical" style={{ width: "100%" }} size={12}>
             {blockers.length ? (
-              <Alert
-                type="error"
-                showIcon
-                message={t("关键数据源会阻断实时运行", "Critical data sources block live runs")}
-                description={blockers.map((item) => `${item.source_id}: ${item.reason || item.status}`).join("; ")}
-              />
+              <Alert type="error" showIcon message="Critical data sources block live runs" description={blockers.map((item) => `${item.source_id}: ${item.reason || item.status}`).join("; ")} />
             ) : (
-              <Alert
-                type={audit?.blocking_status === "WARN" ? "warning" : "success"}
-                showIcon
-                message={t("没有关键阻断项", "No critical blockers")}
-              />
+              <Alert type={audit?.blocking_status === "WARN" ? "warning" : "success"} showIcon message="No critical blockers" />
             )}
             {recommendations.length ? (
               <Space wrap>
                 {recommendations.map((item) => (
-                  <Button
-                    key={`${item.source_id}-${item.updater_id}`}
-                    size="small"
-                    onClick={() => runUpdater(item.updater_id)}
-                    loading={runningUpdater === item.updater_id}
-                  >
-                    {t("运行刷新", "Run updater")}: {item.updater_id}
+                  <Button key={`${item.source_id}-${item.updater_id}`} size="small" onClick={() => runUpdater(item.updater_id)} loading={runningUpdater === item.updater_id}>
+                    Run updater: {item.updater_id}
                   </Button>
                 ))}
               </Space>
             ) : null}
-            <Typography.Text type="secondary">
-              {t("最近报告", "Latest report")}: {visibleRun?.artifacts?.markdown_path || visibleRun?.artifacts?.json_path || "-"}
-            </Typography.Text>
+            <Typography.Text type="secondary">Latest report: {artifactLabel(visibleRun, advancedMode)}</Typography.Text>
           </Space>
         </Card>
 
-        <Card
-          title={t("数据地址审计", "Data Path Audit")}
-          extra={audit ? <Tag color={statusColor(audit.overall_status)}>{audit.overall_status}</Tag> : null}
-        >
+        <Card title="Data Audit" extra={audit ? <Tag color={statusColor(audit.overall_status)}>{audit.overall_status}</Tag> : null}>
           <Table
             rowKey="source_id"
             loading={loading}
             columns={columns}
             dataSource={audit?.sources || []}
             scroll={{ x: 1060 }}
-            expandable={{
-              expandedRowRender: (record) => (
-                <Descriptions size="small" column={2}>
-                  <Descriptions.Item label="mtime">{record.mtime || "-"}</Descriptions.Item>
-                  <Descriptions.Item label="freshness_days">{record.freshness_days ?? "-"}</Descriptions.Item>
-                  <Descriptions.Item label="calendar_count">{record.calendar_count ?? "-"}</Descriptions.Item>
-                  <Descriptions.Item label="feature_dir_count">{record.feature_dir_count ?? "-"}</Descriptions.Item>
-                  <Descriptions.Item label="package_version">{record.package_version ?? "-"}</Descriptions.Item>
-                  <Descriptions.Item label="latest_query">{record.latest_query ? JSON.stringify(record.latest_query) : "-"}</Descriptions.Item>
-                  <Descriptions.Item label="freshness_reason" span={2}>
-                    {record.freshness_reason || "-"}
-                  </Descriptions.Item>
-                  <Descriptions.Item label="instrument_counts" span={2}>
-                    <Typography.Text>{record.instrument_counts ? JSON.stringify(record.instrument_counts) : "-"}</Typography.Text>
-                  </Descriptions.Item>
-                  <Descriptions.Item label="available" span={2}>
-                    <Typography.Text>{record.available ? JSON.stringify(record.available) : "-"}</Typography.Text>
-                  </Descriptions.Item>
-                  <Descriptions.Item label="notes" span={2}>
-                    {(record.notes || []).join("; ") || "-"}
-                  </Descriptions.Item>
-                </Descriptions>
-              ),
-            }}
+            expandable={
+              advancedMode
+                ? {
+                    expandedRowRender: (record) => (
+                      <Descriptions size="small" column={2}>
+                        <Descriptions.Item label="mtime">{record.mtime || "-"}</Descriptions.Item>
+                        <Descriptions.Item label="freshness_days">{record.freshness_days ?? "-"}</Descriptions.Item>
+                        <Descriptions.Item label="calendar_count">{record.calendar_count ?? "-"}</Descriptions.Item>
+                        <Descriptions.Item label="feature_dir_count">{record.feature_dir_count ?? "-"}</Descriptions.Item>
+                        <Descriptions.Item label="freshness_reason" span={2}>{record.freshness_reason || "-"}</Descriptions.Item>
+                        <Descriptions.Item label="notes" span={2}>{(record.notes || []).join("; ") || "-"}</Descriptions.Item>
+                      </Descriptions>
+                    ),
+                  }
+                : undefined
+            }
           />
         </Card>
 
         {visibleRun ? (
-          <Card title={t("最近一次维护结果", "Latest Maintenance Run")} extra={<Tag color={statusColor(visibleRun.overall_status)}>{visibleRun.overall_status}</Tag>}>
+          <Card title="Latest Maintenance Run" extra={<Tag color={statusColor(visibleRun.overall_status)}>{visibleRun.overall_status}</Tag>}>
             <Descriptions size="small" column={2} style={{ marginBottom: 16 }}>
-              <Descriptions.Item label="run_id">{visibleRun.run_id}</Descriptions.Item>
+              {advancedMode ? <Descriptions.Item label="run_id">{visibleRun.run_id}</Descriptions.Item> : null}
               <Descriptions.Item label="generated_at">{visibleRun.generated_at}</Descriptions.Item>
               <Descriptions.Item label="dry_run">{String(visibleRun.dry_run)}</Descriptions.Item>
-              <Descriptions.Item label="artifacts">{visibleRun.artifacts?.json_path || "-"}</Descriptions.Item>
+              <Descriptions.Item label={advancedMode ? "artifacts" : "Report"}>{artifactLabel(visibleRun, advancedMode)}</Descriptions.Item>
             </Descriptions>
             <Table
               size="small"
-              rowKey={(record, index) => `${record.name}-${index}`}
+              rowKey={(record, index) => `${String(record.name || "step")}-${index}`}
               pagination={false}
               dataSource={visibleRun.steps}
               columns={[
-                { title: t("步骤", "Step"), dataIndex: "name" },
-                { title: t("状态", "Status"), dataIndex: "status", render: (value) => <Tag color={statusColor(String(value))}>{String(value)}</Tag> },
-                { title: t("结果", "Result"), render: (_, record) => <Typography.Text>{record.message ? String(record.message) : JSON.stringify(record.result || {})}</Typography.Text> },
+                { title: "Step", dataIndex: "name" },
+                { title: "Status", dataIndex: "status", render: (value) => <Tag color={statusColor(String(value))}>{String(value)}</Tag> },
+                { title: "Result", render: (_, record) => <Typography.Text>{record.message ? String(record.message) : JSON.stringify(record.result || {})}</Typography.Text> },
               ]}
             />
           </Card>

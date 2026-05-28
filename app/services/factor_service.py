@@ -10,6 +10,7 @@ import pandas as pd
 from app.datahub.loaders.qlib_bin import load_daily_bar
 from app.factors.base import FactorInfo
 from app.factors.registry import ensure_registered, get_factor, list_factors
+from app.services.market_data_repository import MarketDataRepository, postgres_market_data_enabled, resolve_market_source_id
 
 
 DEFAULT_FACTOR_MODULES = [
@@ -63,13 +64,30 @@ def run_qlib_factor(
     ensure_registered(DEFAULT_FACTOR_MODULES)
     rf = get_factor(factor_name)
 
-    daily_bar = load_daily_bar(
-        provider_uri=provider_uri,
-        universe=universe,
-        start_date=start_date,
-        end_date=end_date,
-        instrument_limit=instrument_limit,
-    )
+    daily_bar = pd.DataFrame()
+    if postgres_market_data_enabled():
+        source_id = resolve_market_source_id(provider_uri=provider_uri, universe=universe)
+        repo = MarketDataRepository(source_id)
+        try:
+            if repo.source_exists(source_id):
+                daily_bar = repo.load_daily_bar(
+                    source_id=source_id,
+                    provider_uri=provider_uri,
+                    universe=universe,
+                    start_date=start_date,
+                    end_date=end_date,
+                    instrument_limit=instrument_limit,
+                )
+        except Exception:
+            daily_bar = pd.DataFrame()
+    if daily_bar.empty:
+        daily_bar = load_daily_bar(
+            provider_uri=provider_uri,
+            universe=universe,
+            start_date=start_date,
+            end_date=end_date,
+            instrument_limit=instrument_limit,
+        )
 
     if "close" not in daily_bar.columns:
         raise ValueError("daily_bar missing close")

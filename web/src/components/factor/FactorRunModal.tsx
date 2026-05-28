@@ -35,8 +35,8 @@ export function FactorRunModal(props: {
   return (
     <Modal
       open={props.open}
-      title={props.mode === "demo" ? "运行 Demo" : "运行 Qlib"}
-      okText="提交运行"
+      title={props.mode === "demo" ? "Run Demo Factor" : "Run Market Factor"}
+      okText="Submit Run"
       onCancel={props.onCancel}
       confirmLoading={props.loading}
       onOk={() => {
@@ -45,34 +45,33 @@ export function FactorRunModal(props: {
       destroyOnClose
     >
       <Typography.Paragraph type="secondary" style={{ fontSize: 12, marginTop: 0 }}>
-        因子：<Typography.Text code>{props.factorName}</Typography.Text>
+        Factor: <Typography.Text code>{props.factorName}</Typography.Text>
       </Typography.Paragraph>
       <Form layout="vertical" form={form}>
-        <Form.Item label="参数 n" name="n" rules={[{ required: true, message: "请输入 n" }]}>
+        <Form.Item label="Parameter n" name="n" rules={[{ required: true, message: "Enter n" }]}>
           <InputNumber min={1} max={252} style={{ width: "100%" }} />
         </Form.Item>
         {props.mode === "qlib" ? (
           <>
-            <Form.Item label="股票池 universe" name="universe" rules={[{ required: true }]}>
+            <Form.Item label="Universe" name="universe" rules={[{ required: true }]}>
               <Select
                 options={[
-                  { value: "csi300", label: "csi300" },
-                  { value: "csi500", label: "csi500" },
-                  { value: "csi100", label: "csi100" },
-                  { value: "all", label: "all" },
+                  { value: "csi300", label: "CSI 300" },
+                  { value: "csi500", label: "CSI 500" },
+                  { value: "csi100", label: "CSI 100" },
+                  { value: "all", label: "All instruments" },
                 ]}
               />
             </Form.Item>
-            <Form.Item label="instrument_limit" name="instrument_limit" rules={[{ required: true }]}>
+            <Form.Item label="Instrument limit" name="instrument_limit" rules={[{ required: true }]}>
               <InputNumber min={1} max={5000} style={{ width: "100%" }} />
             </Form.Item>
           </>
         ) : null}
-        <Form.Item label="保存结果到 Parquet（生成 calc_batch_id）" name="save" valuePropName="checked">
+        <Form.Item label="Save result artifact" name="save" valuePropName="checked">
           <Switch />
         </Form.Item>
       </Form>
     </Modal>
   );
 }
-

@@ -118,6 +118,8 @@ class RunStockRadarIn(BaseModel):
 class RunStockRadarOut(BaseModel):
     universe: str
     provider_uri: str
+    data_source_id: Optional[str] = None
+    data_backend: Optional[str] = None
     signal_date: str
     effective_trade_date: str
     row_count_on_signal_date: int

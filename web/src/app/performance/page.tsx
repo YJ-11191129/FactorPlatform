@@ -9,6 +9,7 @@ import { EmptyState } from "@/components/common/EmptyState";
 import { MetricCard } from "@/components/common/MetricCard";
 import { SectionCard } from "@/components/common/SectionCard";
 import { PageContainer } from "@/components/layout/PageContainer";
+import { useAdvancedMode } from "@/lib/advanced-mode";
 import { getPerformanceAttribution, getPerformanceSummary, getPerformanceTimeseries } from "@/lib/api/signal-center";
 import type { ExecutionMode, PerformanceSummary, TimeSeriesPoint } from "@/types/signal-center";
 
@@ -26,6 +27,7 @@ type Attribution = {
 };
 
 export default function PerformancePage() {
+  const [advancedMode] = useAdvancedMode();
   const [state, setState] = useState<"loading" | "error" | "ready">("loading");
   const [summary, setSummary] = useState<PerformanceSummary | null>(null);
   const [timeseries, setTimeseries] = useState<TimeSeriesPoint[]>([]);
@@ -98,7 +100,11 @@ export default function PerformancePage() {
           type={executionMode === "shadow" ? "info" : evaluatedSignals > 0 ? "success" : "warning"}
           showIcon
           message={`Performance source: ${summary.data_source || "signal_outcomes"}`}
-          description={`computed_at=${summary.computed_at || "-"} | source_run_id=${summary.source_run_id || "-"} | evaluated=${evaluatedSignals} | pending=${pendingSignals} | no_trade=${noTradeSignals}${executionMode === "shadow" ? " | research-only, not live PnL" : ""}`}
+          description={
+            advancedMode
+              ? `computed_at=${summary.computed_at || "-"} | source_run_id=${summary.source_run_id || "-"} | evaluated=${evaluatedSignals} | pending=${pendingSignals} | no_trade=${noTradeSignals}${executionMode === "shadow" ? " | research-only, not live PnL" : ""}`
+              : `computed_at=${summary.computed_at || "-"} | evaluated=${evaluatedSignals} | pending=${pendingSignals} | no_trade=${noTradeSignals}${executionMode === "shadow" ? " | research-only, not live PnL" : ""}`
+          }
         />
       </SectionCard>
 

@@ -20,6 +20,9 @@ class Settings:
     require_db: bool = field(default_factory=lambda: os.getenv("FACTOR_PLATFORM_REQUIRE_DB", "0") in TRUTHY)
     require_auth: bool = field(default_factory=lambda: os.getenv("FACTOR_PLATFORM_REQUIRE_AUTH", "0") in TRUTHY)
     api_keys: str = field(default_factory=lambda: os.getenv("FACTOR_PLATFORM_API_KEYS", ""))
+    market_data_backend: str = field(default_factory=lambda: os.getenv("FACTOR_PLATFORM_MARKET_DATA_BACKEND", "files"))
+    artifact_root: str = field(default_factory=lambda: os.getenv("FACTOR_PLATFORM_ARTIFACT_ROOT", "data/artifacts"))
+    roadshow_seed_dump: str = field(default_factory=lambda: os.getenv("FACTOR_PLATFORM_ROADSHOW_SEED_DUMP", "data/db_dumps/roadshow_demo.dump"))
 
 
 def get_settings() -> Settings:

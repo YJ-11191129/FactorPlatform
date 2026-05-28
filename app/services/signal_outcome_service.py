@@ -13,6 +13,7 @@ from typing import Any
 import pandas as pd
 
 from app.datahub.loaders.qlib_bin import load_daily_bar
+from app.services.market_data_repository import MarketDataRepository, postgres_market_data_enabled, resolve_market_source_id
 from app.services.signal_generation_service import (
     read_latest_signal_snapshot,
     read_signal_history,
@@ -263,6 +264,21 @@ def _load_price_frame(
         if (parsed := _signal_start_date(signal, snapshot)) is not None
     ]
     start_date = min(start_dates).isoformat() if start_dates else None
+    if postgres_market_data_enabled():
+        source_id = resolve_market_source_id(provider_uri=provider, universe=universe_name)
+        repo = MarketDataRepository(source_id)
+        try:
+            if repo.source_exists(source_id):
+                return repo.load_daily_bar(
+                    source_id=source_id,
+                    provider_uri=provider,
+                    universe=universe_name,
+                    start_date=_parse_date(start_date),
+                    instruments=instruments,
+                    instrument_limit=len(instruments),
+                )
+        except Exception:
+            pass
     return load_daily_bar(
         provider,
         universe_name,

@@ -120,6 +120,13 @@ def save_run(
         register_factor_run_artifact(meta)
     except Exception:
         pass
+    try:
+        from app.services.artifact_service import register_artifact
+
+        register_artifact(parquet_path, artifact_type="factor_values", run_id=bid, meta={"factor_name": factor_name, "mode": mode})
+        register_artifact(meta_path, artifact_type="factor_run_metadata", run_id=bid, file_type="json")
+    except Exception:
+        pass
 
     return RunArtifact(
         calc_batch_id=bid,

@@ -8,8 +8,12 @@ from pathlib import Path
 from typing import Any
 
 import pandas as pd
+from sqlalchemy import select
 
+from app.db.session import get_engine
+from app.models.market_data import StructuredMarketDataset
 from app.services.llm import build_llm_provider
+from app.services.market_data_repository import MarketDataRepository, postgres_market_data_enabled
 
 
 @dataclass(frozen=True)
@@ -29,6 +33,21 @@ def _wind_data_root() -> Path:
 
 
 def _read_macro_cross_asset_panel() -> pd.DataFrame | None:
+    if postgres_market_data_enabled():
+        try:
+            stmt = (
+                select(StructuredMarketDataset.payload)
+                .where(StructuredMarketDataset.source_id == "macro_cross_asset")
+                .order_by(StructuredMarketDataset.trade_date)
+            )
+            raw = pd.read_sql(stmt, get_engine())
+            if not raw.empty:
+                df = pd.DataFrame([dict(item or {}) for item in raw["payload"].tolist()])
+                if "date" in df.columns:
+                    df["date"] = pd.to_datetime(df["date"]).dt.date
+                return df
+        except Exception:
+            pass
     p = _wind_data_root() / "03_market_state" / "macro_cross_asset_daily.parquet"
     if not p.exists():
         return None
@@ -39,6 +58,11 @@ def _read_macro_cross_asset_panel() -> pd.DataFrame | None:
 
 
 def _read_stock_ohlcv_status() -> dict[str, Any]:
+    if postgres_market_data_enabled():
+        try:
+            return MarketDataRepository("wind_stock_ohlcv").data_status("wind_stock_ohlcv")
+        except Exception:
+            pass
     p = Path(os.getenv("FACTOR_PLATFORM_REAL_OHLCV_PATH", r"D:\Kaggle\data\wind_data\02_daily_stock\stock_daily_ohlcv.parquet"))
     if not p.exists():
         return {"path": str(p), "exists": False}

@@ -9,6 +9,7 @@ import { PageContainer } from "@/components/layout/PageContainer";
 import { RunDetailDrawer } from "@/components/run/RunDetailDrawer";
 import { RunFilterBar, type RunFilters } from "@/components/run/RunFilterBar";
 import { RunTable } from "@/components/run/RunTable";
+import { useAdvancedMode } from "@/lib/advanced-mode";
 import { getResearchOpsLineage } from "@/lib/api/research-ops";
 import { getRunMeta, listRuns, runDownloadUrl } from "@/lib/api/runs";
 import type { ResearchOpsLineage, ResearchOpsObject } from "@/types/research-ops";
@@ -23,6 +24,7 @@ function statusColor(status: string): string {
 }
 
 export default function RunsPage() {
+  const [advancedMode] = useAdvancedMode();
   const [state, setState] = useState<LoadState>("loading");
   const [data, setData] = useState<RunItem[]>([]);
   const [filters, setFilters] = useState<RunFilters>({ autoRefresh: false });
@@ -98,7 +100,7 @@ export default function RunsPage() {
   }
 
   return (
-    <PageContainer title="Runs" subtitle="Review task status, artifacts, and ResearchOps lineage">
+    <PageContainer title="Runs" subtitle={advancedMode ? "Review task status, artifacts, and ResearchOps lineage" : "Review research jobs, outputs, and quality status"}>
       {state === "loading" ? (
         <Skeleton active paragraph={{ rows: 10 }} />
       ) : state === "error" ? (
@@ -123,7 +125,7 @@ export default function RunsPage() {
             open={lineageOpen}
             width={760}
             onClose={() => setLineageOpen(false)}
-            title={`ResearchOps Lineage - ${lineageTarget}`}
+            title={advancedMode ? `ResearchOps Lineage - ${lineageTarget}` : "Research Lineage"}
             destroyOnClose
           >
             {lineageLoading ? (
@@ -143,7 +145,7 @@ export default function RunsPage() {
                       title: "Object",
                       dataIndex: "object_id",
                       key: "object_id",
-                      render: (v: string) => <Typography.Text code>{v}</Typography.Text>,
+                      render: (v: string, _record, index) => (advancedMode ? <Typography.Text code>{v}</Typography.Text> : <Typography.Text>Object {index + 1}</Typography.Text>),
                     },
                     {
                       title: "Type",
@@ -170,7 +172,7 @@ export default function RunsPage() {
                       pagination={false}
                       dataSource={lineage.missing_references}
                       columns={[
-                        { title: "Object / Artifact", render: (_, r) => r.object_id || r.artifact_path },
+                        { title: advancedMode ? "Object / Artifact" : "Reference", render: (_, r) => (advancedMode ? r.object_id || r.artifact_path : r.object_id ? "Registered object" : "Artifact reference") },
                         { title: "Reason", dataIndex: "reason", width: 180 },
                       ]}
                     />
@@ -186,4 +188,3 @@ export default function RunsPage() {
     </PageContainer>
   );
 }
-

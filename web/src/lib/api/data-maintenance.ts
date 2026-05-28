@@ -23,6 +23,7 @@ export type DataSourceStatus = {
   calendar_count?: number | null;
   instrument_counts?: Record<string, number> | null;
   feature_dir_count?: number | null;
+  database_backed?: boolean;
   package_version?: string | null;
   available?: Record<string, boolean> | null;
   latest_query?: Record<string, unknown> | null;

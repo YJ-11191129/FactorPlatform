@@ -28,6 +28,7 @@ class DataSourceStatusOut(BaseModel):
     calendar_count: Optional[int] = None
     instrument_counts: Optional[Dict[str, int]] = None
     feature_dir_count: Optional[int] = None
+    database_backed: bool = False
 
 
 class DataPathAuditOut(BaseModel):

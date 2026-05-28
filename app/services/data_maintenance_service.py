@@ -26,6 +26,7 @@ DEFAULT_WIND_ROOT = r"D:\Kaggle\data\wind_data"
 DEFAULT_PROCESSED_ROOT = r"D:\Kaggle\data\processed"
 DEFAULT_US_QLIB_PROVIDER_URI = r"D:\mcQlib\data\qlib_bin\us_data"
 CRITICAL_SOURCE_IDS = {"qlib_cn_daily", "qlib_us_daily", "wind_stock_ohlcv"}
+TRUTHY = {"1", "true", "True", "YES", "yes", "on", "ON"}
 SOURCE_UPDATERS = {
     "qlib_cn_daily": "qlib_cn_chenditc",
     "qlib_us_daily": "qlib_us_yahoo_full",
@@ -95,6 +96,10 @@ def _status_from_freshness(exists: bool, latest_date: str | None, freshness_days
     return "STALE" if days > freshness_days else "OK"
 
 
+def _stale_data_blocks() -> bool:
+    return os.getenv("FACTOR_PLATFORM_STALE_DATA_BLOCKS", "1") in TRUTHY
+
+
 def _norm_path(path: Path | str) -> str:
     return os.path.normcase(os.path.abspath(str(path)))
 
@@ -154,7 +159,7 @@ def _health_summary(sources: list[dict[str, Any]]) -> dict[str, Any]:
             "updater_id": SOURCE_UPDATERS.get(str(item.get("source_id") or "")),
         }
         for item in sources
-        if item.get("is_blocking") and item.get("status") in {"MISSING", "STALE"}
+        if item.get("is_blocking") and (item.get("status") == "MISSING" or (item.get("status") == "STALE" and _stale_data_blocks()))
     ]
     if blockers:
         blocking_status = "BLOCKED"
@@ -365,16 +370,27 @@ def _read_openbb_status(spec: DataSourceSpec) -> dict[str, Any]:
 
 def audit_data_paths() -> dict[str, Any]:
     sources: list[dict[str, Any]] = []
-    for spec in configured_sources():
-        if spec.kind == "qlib_provider":
-            item = _read_qlib_status(spec)
-        elif spec.kind == "openbb_sdk":
-            item = _read_openbb_status(spec)
-        elif spec.kind == "parquet":
-            item = _read_parquet_status(spec)
-        else:
-            item = _read_directory_status(spec)
-        sources.append(_annotate_source(item))
+    try:
+        from app.services.market_data_repository import MarketDataRepository, postgres_market_data_enabled
+
+        if postgres_market_data_enabled():
+            db_sources = [dict(item) for item in MarketDataRepository().source_status_items()]
+            if db_sources:
+                sources.extend(_annotate_source(item) for item in db_sources)
+    except Exception:
+        sources = []
+
+    if not sources:
+        for spec in configured_sources():
+            if spec.kind == "qlib_provider":
+                item = _read_qlib_status(spec)
+            elif spec.kind == "openbb_sdk":
+                item = _read_openbb_status(spec)
+            elif spec.kind == "parquet":
+                item = _read_parquet_status(spec)
+            else:
+                item = _read_directory_status(spec)
+            sources.append(_annotate_source(item))
 
     counts: dict[str, int] = {}
     for item in sources:
@@ -447,6 +463,12 @@ def _gate_from_source(item: dict[str, Any], requested_end_date: date | str | Non
                 "blocking_status": "WARN",
                 "message": f"{source_id} is stale for live use but valid for requested historical date {requested.isoformat()}",
             }
+        if not _stale_data_blocks():
+            return {
+                **base,
+                "blocking_status": "WARN",
+                "message": f"{source_id} is stale for live use but allowed for roadshow/historical demo mode: {reason}",
+            }
         return {**base, "blocking_status": "BLOCKED", "message": f"{source_id} is stale for live use: {reason}"}
     if status == "WARN":
         return {**base, "blocking_status": "WARN", "message": reason or f"{source_id} freshness is uncertain"}
@@ -466,6 +488,26 @@ def evaluate_backtest_data_gate(
     *,
     allow_latest_available: bool = False,
 ) -> dict[str, Any]:
+    try:
+        from app.services.market_data_repository import MarketDataRepository, postgres_market_data_enabled
+
+        if postgres_market_data_enabled():
+            item = MarketDataRepository().status_item("wind_stock_ohlcv")
+            if item is not None:
+                latest = _parse_date(item.get("end_date"))
+                effective_end_date = requested_end_date
+                using_latest_available = bool(allow_latest_available and requested_end_date is None and latest is not None)
+                if using_latest_available:
+                    effective_end_date = latest
+                gate = _gate_from_source(_annotate_source(item), requested_end_date=effective_end_date)
+                if using_latest_available:
+                    gate["original_requested_end_date"] = None
+                    gate["effective_end_date"] = latest.isoformat() if latest else None
+                    gate["using_latest_available"] = True
+                return gate
+    except Exception:
+        pass
+
     override = os.getenv("FACTOR_PLATFORM_BACKTEST_OHLCV_PATH")
     if override:
         item = _annotate_source(
@@ -530,6 +572,18 @@ def evaluate_stock_radar_data_gate(
                     f"latest available historical date {latest.isoformat()}: {reason}"
                 )
         return gate
+
+    try:
+        from app.services.market_data_repository import MarketDataRepository, postgres_market_data_enabled, resolve_market_source_id
+
+        if postgres_market_data_enabled():
+            source_id = resolve_market_source_id(provider_uri=provider_uri)
+            item = MarketDataRepository().status_item(source_id)
+            if item is not None:
+                item["is_blocking"] = True
+                return gate_for_item(_annotate_source(item))
+    except Exception:
+        pass
 
     provider_norm = _norm_path(provider_uri)
     for spec in configured_sources():
@@ -600,6 +654,13 @@ def _write_report(payload: dict[str, Any], run_id: str) -> dict[str, str]:
         ]
     )
     md_path.write_text("\n".join(lines), encoding="utf-8")
+    try:
+        from app.services.artifact_service import register_artifact
+
+        artifacts["json_artifact_id"] = register_artifact(json_path, artifact_type="data_maintenance_report", run_id=run_id, file_type="json").get("artifact_id")
+        artifacts["markdown_artifact_id"] = register_artifact(md_path, artifact_type="data_maintenance_report", run_id=run_id, file_type="md").get("artifact_id")
+    except Exception:
+        pass
     return artifacts
 
 

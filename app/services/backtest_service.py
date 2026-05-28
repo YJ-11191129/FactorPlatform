@@ -16,6 +16,7 @@ import pyarrow.compute as pc
 import pyarrow as pa
 
 from app.datahub.loaders.qlib_bin import load_daily_bar as load_qlib_daily_bar
+from app.services.market_data_repository import MarketDataRepository, postgres_market_data_enabled
 from app.services.strategy_service import ensure_strategies_loaded
 from app.services.strategy_validator import indicator_alias, validate_strategy_spec
 from app.strategies.registry import get_strategy
@@ -284,6 +285,22 @@ def _load_daily_bar_from_source(
     start_date: Optional[date] = None,
     end_date: Optional[date] = None,
 ) -> pd.DataFrame:
+    if postgres_market_data_enabled():
+        db_source_id = source.source_id if source.kind == "qlib" else "wind_stock_ohlcv"
+        repo = MarketDataRepository(db_source_id)
+        try:
+            if repo.source_exists(db_source_id):
+                return repo.load_daily_bar(
+                    source_id=db_source_id,
+                    provider_uri=source.provider_uri,
+                    universe=source.universe or "all",
+                    start_date=start_date,
+                    end_date=end_date,
+                    instruments=list(source.instruments) if source.instruments else None,
+                )
+        except Exception:
+            pass
+
     if source.kind == "qlib":
         if not source.provider_uri:
             raise FileNotFoundError("qlib provider_uri is not configured")
@@ -313,11 +330,32 @@ def _load_daily_bar(
     end_date: Optional[date] = None,
     universe: Optional[list[str]] = None,
 ) -> pd.DataFrame:
+    if postgres_market_data_enabled():
+        repo = MarketDataRepository("wind_stock_ohlcv")
+        try:
+            if repo.source_exists("wind_stock_ohlcv"):
+                return repo.load_daily_bar(
+                    source_id="wind_stock_ohlcv",
+                    universe="all",
+                    start_date=start_date,
+                    end_date=end_date,
+                    instruments=universe,
+                )
+        except Exception:
+            pass
     _, p = _resolve_ohlcv_source()
     return _load_and_normalize_ohlcv(p, start_date=start_date, end_date=end_date, universe=universe)
 
 
 def backtest_data_status() -> dict[str, Any]:
+    if postgres_market_data_enabled():
+        repo = MarketDataRepository("wind_stock_ohlcv")
+        try:
+            if repo.source_exists("wind_stock_ohlcv"):
+                return repo.data_status("wind_stock_ohlcv")
+        except Exception:
+            pass
+
     source_name, p = _resolve_ohlcv_source()
     dataset = _dataset(p)
     cols = list(dataset.schema.names)
@@ -695,6 +733,17 @@ def _simulate_positions(
         summary.update(dict(metadata))
     summary_path = bt_dir / "summary.json"
     summary_path.write_text(json.dumps(summary, ensure_ascii=False, indent=2), encoding="utf-8")
+    try:
+        from app.services.artifact_service import register_artifact
+
+        summary["artifacts"] = {
+            "equity_curve": register_artifact(equity_path, artifact_type="backtest_equity_curve", run_id=bt_id, meta={"strategy_id": strategy_id}),
+            "positions": register_artifact(positions_path, artifact_type="backtest_positions", run_id=bt_id, meta={"strategy_id": strategy_id}),
+            "summary": register_artifact(summary_path, artifact_type="backtest_summary", run_id=bt_id, file_type="json", meta={"strategy_id": strategy_id}),
+        }
+        summary_path.write_text(json.dumps(summary, ensure_ascii=False, indent=2), encoding="utf-8")
+    except Exception:
+        pass
 
     artifact = BacktestArtifact(
         backtest_id=bt_id,

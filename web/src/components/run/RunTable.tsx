@@ -4,6 +4,7 @@ import { Button, Space, Table, Typography } from "antd";
 import type { ColumnsType } from "antd/es/table";
 
 import { StatusTag } from "@/components/common/StatusTag";
+import { useAdvancedMode } from "@/lib/advanced-mode";
 import { formatDateTime } from "@/lib/utils/date";
 import type { RunItem } from "@/types/run";
 
@@ -14,13 +15,14 @@ export function RunTable(props: {
   onDownload: (id: string) => void;
   onLineage?: (id: string) => void;
 }) {
+  const [advancedMode] = useAdvancedMode();
   const columns: ColumnsType<RunItem> = [
     {
-      title: "Batch ID",
+      title: advancedMode ? "Batch ID" : "Job",
       dataIndex: "calc_batch_id",
       key: "calc_batch_id",
       width: 260,
-      render: (v: string) => <Typography.Text code>{v}</Typography.Text>,
+      render: (v: string, _record, index) => (advancedMode ? <Typography.Text code>{v}</Typography.Text> : <Typography.Text>Research job {index + 1}</Typography.Text>),
     },
     { title: "Task", dataIndex: "task_name", key: "task_name", width: 200 },
     { title: "Type", dataIndex: "task_type", key: "task_type", width: 110 },
@@ -99,4 +101,3 @@ export function RunTable(props: {
     />
   );
 }
-

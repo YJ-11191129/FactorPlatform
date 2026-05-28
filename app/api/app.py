@@ -3,6 +3,7 @@ import logging
 from fastapi import FastAPI
 
 from app.api.routers.analysis import router as analysis_router
+from app.api.routers.artifacts import router as artifacts_router
 from app.api.routers.audit import router as audit_router
 from app.api.routers.backtests import router as backtests_router
 from app.api.routers.data_maintenance import router as data_maintenance_router
@@ -38,6 +39,7 @@ def create_app() -> FastAPI:
     app.include_router(openbb_router)
     app.include_router(tasks_router)
     app.include_router(analysis_router)
+    app.include_router(artifacts_router)
     app.include_router(qlib_research_router)
     app.include_router(reports_router)
     app.include_router(research_quality_router)

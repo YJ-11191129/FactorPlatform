@@ -11,6 +11,7 @@ import pandas as pd
 from app.datahub.loaders.qlib_bin import load_daily_bar, read_calendar
 from app.factors.registry import ensure_registered, get_factor
 from app.services.factor_service import DEFAULT_FACTOR_MODULES
+from app.services.market_data_repository import MarketDataRepository, postgres_market_data_enabled, resolve_market_source_id
 
 
 DEFAULT_QLIB_PROVIDER_URI = os.getenv("FACTOR_PLATFORM_PROVIDER_URI", r"D:\mcQlib\data\qlib_bin\cn_data")
@@ -64,7 +65,12 @@ def _resolve_asof_date(daily_bar: pd.DataFrame, asof_date: Optional[date]) -> da
     return max(dates)
 
 
-def _resolve_next_trade_date(provider_uri: str, signal_date: date) -> Optional[str]:
+def _resolve_next_trade_date(provider_uri: str, signal_date: date, source_id: str | None = None) -> Optional[str]:
+    if source_id and postgres_market_data_enabled():
+        try:
+            return MarketDataRepository(source_id).next_trade_date(source_id=source_id, signal_date=signal_date)
+        except Exception:
+            pass
     try:
         calendar = read_calendar(provider_uri)
     except Exception:
@@ -115,24 +121,44 @@ def run_stock_radar(
     if min_factor_count < 1:
         raise ValueError("min_factor_count must be >= 1")
 
-    provider_path = Path(provider_uri)
-    if not provider_path.exists():
-        raise ValueError(f"qlib provider_uri does not exist: {provider_uri}")
-    if not (provider_path / "calendars" / "day.txt").exists():
-        raise ValueError(f"qlib provider_uri missing calendars/day.txt: {provider_uri}")
-    universe_file = "all.txt" if universe == "all" else f"{universe}.txt"
-    if not (provider_path / "instruments" / universe_file).exists():
-        raise ValueError(f"qlib universe file not found: {provider_path / 'instruments' / universe_file}")
-
     ensure_registered(DEFAULT_FACTOR_MODULES)
 
-    daily_bar = load_daily_bar(
-        provider_uri=provider_uri,
-        universe=universe,
-        start_date=start_date,
-        end_date=end_date,
-        instrument_limit=instrument_limit,
-    )
+    source_id = resolve_market_source_id(provider_uri=provider_uri, universe=universe)
+    daily_bar = pd.DataFrame()
+    using_postgres = False
+    if postgres_market_data_enabled():
+        repo = MarketDataRepository(source_id)
+        try:
+            if repo.source_exists(source_id):
+                daily_bar = repo.load_daily_bar(
+                    source_id=source_id,
+                    provider_uri=provider_uri,
+                    universe=universe,
+                    start_date=start_date,
+                    end_date=end_date,
+                    instrument_limit=instrument_limit,
+                )
+                using_postgres = not daily_bar.empty
+        except Exception:
+            daily_bar = pd.DataFrame()
+
+    if daily_bar.empty:
+        provider_path = Path(provider_uri)
+        if not provider_path.exists():
+            raise ValueError(f"qlib provider_uri does not exist: {provider_uri}")
+        if not (provider_path / "calendars" / "day.txt").exists():
+            raise ValueError(f"qlib provider_uri missing calendars/day.txt: {provider_uri}")
+        universe_file = "all.txt" if universe == "all" else f"{universe}.txt"
+        if not (provider_path / "instruments" / universe_file).exists():
+            raise ValueError(f"qlib universe file not found: {provider_path / 'instruments' / universe_file}")
+
+        daily_bar = load_daily_bar(
+            provider_uri=provider_uri,
+            universe=universe,
+            start_date=start_date,
+            end_date=end_date,
+            instrument_limit=instrument_limit,
+        )
     if daily_bar.empty:
         raise ValueError(f"no qlib daily bar loaded from {provider_uri} universe={universe}")
 
@@ -276,11 +302,13 @@ def run_stock_radar(
             }
         )
 
-    next_trade_date = _resolve_next_trade_date(provider_uri, signal_date)
+    next_trade_date = _resolve_next_trade_date(provider_uri, signal_date, source_id if using_postgres else None)
 
     return {
         "universe": universe,
         "provider_uri": provider_uri,
+        "data_source_id": source_id if using_postgres else "qlib_file_provider",
+        "data_backend": "postgres" if using_postgres else "files",
         "signal_date": signal_date.isoformat(),
         "effective_trade_date": next_trade_date or "next_trading_day",
         "row_count_on_signal_date": row_count_on_signal_date,

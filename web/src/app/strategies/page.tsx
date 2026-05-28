@@ -12,6 +12,7 @@ import { ErrorState } from "@/components/common/ErrorState";
 import { MetricCard } from "@/components/common/MetricCard";
 import { SectionCard } from "@/components/common/SectionCard";
 import { PageContainer } from "@/components/layout/PageContainer";
+import { useAdvancedMode } from "@/lib/advanced-mode";
 import { getBacktestDataStatus, listBacktests, listStrategies, runBacktest } from "@/lib/api/backtests";
 import { buildQlibPortfolio, generateQlibReport, listQlibFactorMiningRuns, listQlibPortfolios } from "@/lib/api/qlib-research";
 import type { ApiError } from "@/lib/api/client";
@@ -60,6 +61,7 @@ function dataHealthWarning(dataHealth: Record<string, unknown> | null | undefine
 
 export default function StrategiesPage() {
   const router = useRouter();
+  const [advancedMode] = useAdvancedMode();
   const [state, setState] = useState<LoadState>("loading");
   const [strategies, setStrategies] = useState<StrategyInfo[]>([]);
   const [selected, setSelected] = useState<StrategyInfo | null>(null);
@@ -197,7 +199,7 @@ export default function StrategiesPage() {
         portfolio_id: portfolioId,
         backtest_id: latestBacktest?.backtest_id,
       });
-      message.success(`报告已生成：${String(res.html_path || "")}`);
+      message.success(advancedMode ? `Report generated: ${String(res.html_path || "")}` : "Report generated");
     } catch (e) {
       message.error(extractErrorMessage(e));
     } finally {
@@ -409,8 +411,8 @@ export default function StrategiesPage() {
               <Form layout="vertical" initialValues={{ weighting_method: "equal", top_n: 5, long_top_n: 30 }} onFinish={onBuildPortfolio}>
                 <Row gutter={12}>
                   <Col xs={24} lg={8}>
-                    <Form.Item label="Mining run" name="mining_run_id" rules={[{ required: true, message: "请选择一个 mining run" }]}>
-                      <Select showSearch placeholder="Select mining run" options={miningRuns.map((r) => ({ label: r.run_id, value: r.run_id }))} />
+                    <Form.Item label={advancedMode ? "Mining run" : "Research run"} name="mining_run_id" rules={[{ required: true, message: "Select a research run" }]}>
+                      <Select showSearch placeholder="Select research run" options={miningRuns.map((r, index) => ({ label: advancedMode ? r.run_id : `Research run ${index + 1}`, value: r.run_id }))} />
                     </Form.Item>
                   </Col>
                   <Col xs={24} lg={8}>

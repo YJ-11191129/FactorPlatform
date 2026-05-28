@@ -11,6 +11,7 @@ from jinja2 import Environment, FileSystemLoader, select_autoescape
 from app.db.session import db_session
 from app.models.analysis_result import AnalysisResult
 from app.models.report_artifact import ReportArtifact
+from app.services.artifact_service import register_artifact
 from app.services.native_qlib_research_service import get_factor_mining_run, get_portfolio
 
 
@@ -86,21 +87,7 @@ def generate_single_factor_report(analysis_id: str, enable_pdf: bool = False) ->
             meta["pdf_error"] = str(e)
             pdf_path = None
 
-    try:
-        with db_session() as db:
-            db.add(
-                ReportArtifact(
-                    report_id=report_id,
-                    report_type="single_factor",
-                    analysis_id=analysis_id,
-                    status="SUCCESS",
-                    meta=meta,
-                    html_path=str(html_path),
-                    pdf_path=(str(pdf_path) if pdf_path else None),
-                )
-            )
-    except Exception:
-        pass
+    registered_artifacts = _persist_report_record(report_id, "single_factor", analysis_id, meta, html_path, pdf_path)
 
     return {
         "report_id": report_id,
@@ -108,6 +95,7 @@ def generate_single_factor_report(analysis_id: str, enable_pdf: bool = False) ->
         "html_path": str(html_path),
         "pdf_path": (str(pdf_path) if pdf_path else None),
         "meta": meta,
+        "artifacts": registered_artifacts,
     }
 
 
@@ -131,7 +119,7 @@ def _persist_report_record(
     meta: dict[str, Any],
     html_path: Path,
     pdf_path: Path | None,
-) -> None:
+) -> dict[str, Any]:
     try:
         with db_session() as db:
             db.add(
@@ -147,6 +135,26 @@ def _persist_report_record(
             )
     except Exception:
         pass
+    artifacts: dict[str, Any] = {}
+    try:
+        artifacts["html"] = register_artifact(
+            html_path,
+            artifact_type=report_type,
+            run_id=analysis_id,
+            file_type="html",
+            meta={"report_id": report_id, **meta},
+        )
+        if pdf_path:
+            artifacts["pdf"] = register_artifact(
+                pdf_path,
+                artifact_type=report_type,
+                run_id=analysis_id,
+                file_type="pdf",
+                meta={"report_id": report_id, **meta},
+            )
+    except Exception:
+        pass
+    return artifacts
 
 
 def generate_qlib_factor_mining_report(run_id: str, enable_pdf: bool = False) -> dict[str, Any]:
@@ -172,13 +180,14 @@ def generate_qlib_factor_mining_report(run_id: str, enable_pdf: bool = False) ->
     html_path.write_text(html, encoding="utf-8")
     meta = {"run_id": run_id, "report_type": "qlib_factor_mining", "data_source": "qlib_factor_mining_artifacts"}
     pdf_path = _write_optional_pdf(html, artifact_dir, enable_pdf=enable_pdf, meta=meta)
-    _persist_report_record(report_id, "qlib_factor_mining", run_id, meta, html_path, pdf_path)
+    registered_artifacts = _persist_report_record(report_id, "qlib_factor_mining", run_id, meta, html_path, pdf_path)
     return {
         "report_id": report_id,
         "analysis_id": run_id,
         "html_path": str(html_path),
         "pdf_path": (str(pdf_path) if pdf_path else None),
         "meta": meta,
+        "artifacts": registered_artifacts,
     }
 
 
@@ -217,11 +226,12 @@ def generate_qlib_portfolio_backtest_report(
         "data_source": "qlib_portfolio_backtest_artifacts",
     }
     pdf_path = _write_optional_pdf(html, artifact_dir, enable_pdf=enable_pdf, meta=meta)
-    _persist_report_record(report_id, "qlib_portfolio_backtest", portfolio_id, meta, html_path, pdf_path)
+    registered_artifacts = _persist_report_record(report_id, "qlib_portfolio_backtest", portfolio_id, meta, html_path, pdf_path)
     return {
         "report_id": report_id,
         "analysis_id": portfolio_id,
         "html_path": str(html_path),
         "pdf_path": (str(pdf_path) if pdf_path else None),
         "meta": meta,
+        "artifacts": registered_artifacts,
     }

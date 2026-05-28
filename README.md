@@ -148,7 +148,7 @@ Useful checks:
 ```powershell
 docker compose ps
 docker compose exec -T postgres psql -U postgres -d factor_platform -c "\dt"
-powershell -ExecutionPolicy Bypass -File scripts/check_stack_health.ps1 -ApiKey LOCAL_ADMIN_KEY
+powershell -ExecutionPolicy Bypass -File scripts/check_stack_health.ps1 -FrontendHost localhost -ApiKey LOCAL_ADMIN_KEY
 ```
 
 Real market data mounts are optional and controlled by `FACTOR_PLATFORM_HOST_MCQLIB_DATA` and `FACTOR_PLATFORM_HOST_KAGGLE_DATA`; when they are not set, Docker uses the checked-in empty placeholder mount so the stack does not depend on this workstation's `D:` drive.
@@ -156,6 +156,18 @@ Real market data mounts are optional and controlled by `FACTOR_PLATFORM_HOST_MCQ
 ### 4. Docker-only Roadshow
 
 Use this mode on a presentation computer that has Docker but no Python, Node.js, local database, qlib, or local market data:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts\build_portable_data.ps1
+```
+
+Then build the reusable Postgres roadshow dump:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts\build_roadshow_db.ps1
+```
+
+Copy the project folder together with `data/portable`, `data/db_dumps/roadshow_demo.dump`, and `data/artifacts` to the presentation computer, then start:
 
 ```powershell
 docker compose -f docker-compose.roadshow.yml up -d --build
@@ -167,7 +179,18 @@ Then open:
 http://localhost:3000/dashboard
 ```
 
-Roadshow mode runs the full local stack: Postgres container, Redis container, FastAPI backend, Celery worker, and Next.js frontend. It also enables the checked-in fixture fallback from `web/src/lib/demo/roadshow-fixtures.json`, so read-heavy presentation pages remain available if optional market data or external AI providers are unavailable. The fixture data is synthetic and clearly labeled as demo data.
+Roadshow mode runs the full local stack: Postgres container, one-shot database restore, Redis container, FastAPI backend, Celery worker, and Next.js frontend. It restores `data/db_dumps/roadshow_demo.dump` before the backend starts, so market data is served from PostgreSQL instead of front-end CSV or workstation paths. It also enables the checked-in fixture fallback from `web/src/lib/demo/roadshow-fixtures.json`, so read-heavy presentation pages remain available if optional external AI providers are unavailable. The fixture data is synthetic and clearly labeled as demo data.
+
+The default roadshow data mounts are:
+
+```text
+./data/portable/mcqlib -> /data/mcqlib
+./data/portable/kaggle -> /data/kaggle
+./data/db_dumps/roadshow_demo.dump -> Postgres restore seed
+./data/artifacts -> generated reports, backtests, and exports
+```
+
+Roadshow mode treats stale historical data as a warning instead of blocking the demo (`FACTOR_PLATFORM_STALE_DATA_BLOCKS=0`). This keeps the demo usable while still showing freshness status in the UI.
 
 If port `3000` is occupied, choose another host port:
 
@@ -189,7 +212,8 @@ Useful roadshow commands:
 ```powershell
 docker compose -f docker-compose.roadshow.yml ps
 docker compose -f docker-compose.roadshow.yml exec -T postgres psql -U postgres -d factor_platform -c "\dt"
-powershell -ExecutionPolicy Bypass -File scripts/check_stack_health.ps1 -ApiKey ROADSHOW_ADMIN_KEY
+docker compose -f docker-compose.roadshow.yml exec -T postgres psql -U postgres -d factor_platform -c "select source_id,row_count,asset_count,start_date,end_date from market_data_sources order by source_id"
+powershell -ExecutionPolicy Bypass -File scripts/check_stack_health.ps1 -FrontendHost localhost -ApiKey ROADSHOW_ADMIN_KEY
 docker compose -f docker-compose.roadshow.yml logs -f backend frontend
 docker compose -f docker-compose.roadshow.yml down
 ```
@@ -217,6 +241,9 @@ Important variables:
 | `FACTOR_PLATFORM_REAL_OHLCV_PATH` | Local OHLCV parquet path. |
 | `FACTOR_PLATFORM_HOST_MCQLIB_DATA` | Optional host directory mounted into Docker at `/data/mcqlib` for real qlib data. |
 | `FACTOR_PLATFORM_HOST_KAGGLE_DATA` | Optional host directory mounted into Docker at `/data/kaggle` for real OHLCV/parquet data. |
+| `FACTOR_PLATFORM_MARKET_DATA_BACKEND` | Use `postgres` in roadshow mode so services read imported market data from Postgres. |
+| `FACTOR_PLATFORM_ARTIFACT_ROOT` | Root directory for generated local-volume artifacts. |
+| `FACTOR_PLATFORM_ROADSHOW_SEED_DUMP` | Roadshow database dump path used by the restore service. |
 | `LLM_PROVIDER` | AI provider selection, for example `deepseek` or `openai_compatible`. |
 | `LLM_BASE_URL` | OpenAI-compatible provider base URL. |
 | `LLM_API_KEY` | AI provider API key. Do not commit real keys. |

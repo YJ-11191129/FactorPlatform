@@ -6,14 +6,28 @@ x-roadshow-backend-env: &roadshow-backend-env
   FACTOR_PLATFORM_ENV: roadshow
   FACTOR_PLATFORM_REQUIRE_DB: "1"
   FACTOR_PLATFORM_REQUIRE_AUTH: "1"
+  FACTOR_PLATFORM_STALE_DATA_BLOCKS: ${FACTOR_PLATFORM_STALE_DATA_BLOCKS:-0}
+  FACTOR_PLATFORM_MARKET_DATA_BACKEND: ${FACTOR_PLATFORM_MARKET_DATA_BACKEND:-postgres}
+  FACTOR_PLATFORM_ARTIFACT_ROOT: /app/data/artifacts
+  FACTOR_PLATFORM_RUNS_DIR: /app/data/artifacts/factor_runs
+  FACTOR_PLATFORM_BACKTEST_DIR: /app/data/artifacts/backtests
+  FACTOR_PLATFORM_DATA_MAINTENANCE_DIR: /app/data/artifacts/data_maintenance
+  FACTOR_PLATFORM_QLIB_RESEARCH_DIR: /app/data/artifacts/qlib_research
+  FACTOR_PLATFORM_RESEARCH_QUALITY_DIR: /app/data/artifacts/research_quality
+  FACTOR_PLATFORM_OPENBB_DIR: /app/data/artifacts/openbb
+  FACTOR_PLATFORM_ROADSHOW_SEED_DUMP: /app/data/db_dumps/roadshow_demo.dump
   FACTOR_PLATFORM_API_KEYS: ${FACTOR_PLATFORM_API_KEYS:-ROADSHOW_ADMIN_KEY:admin,ROADSHOW_VIEW_KEY:viewer}
   FACTOR_PLATFORM_PROVIDER_URI: /data/mcqlib/qlib_bin/cn_data
   FACTOR_PLATFORM_US_PROVIDER_URI: /data/mcqlib/qlib_bin/us_data
+  FACTOR_PLATFORM_WIND_DATA_ROOT: /data/kaggle/wind_data
+  FACTOR_PLATFORM_PROCESSED_DATA_ROOT: /data/kaggle/processed
   FACTOR_PLATFORM_REAL_OHLCV_PATH: /data/kaggle/wind_data/02_daily_stock/stock_daily_ohlcv.parquet
+  FACTOR_PLATFORM_FINANCIAL_STATEMENT_PATH: /data/kaggle/processed/financial_statement.parquet
+  FACTOR_PLATFORM_TRADABLE_FLAGS_PATH: /data/kaggle/wind_data/01_master/tradable_flags.parquet
+  FACTOR_PLATFORM_UNIVERSE_PATH: /data/kaggle/wind_data/01_master/a_share_universe.parquet
 
 services:
   postgres:
-    profiles: ["real-data"]
     image: postgres:16
     environment:
       POSTGRES_DB: factor_platform
@@ -23,6 +37,7 @@ services:
       - "${POSTGRES_PORT:-5432}:5432"
     volumes:
       - roadshow_pgdata:/var/lib/postgresql/data
+      - ./data/db_dumps:/db_dumps
     restart: unless-stopped
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
@@ -32,7 +47,6 @@ services:
       start_period: 10s
 
   redis:
-    profiles: ["real-data"]
     image: redis:7-alpine
     ports:
       - "${REDIS_PORT:-6379}:6379"
@@ -44,8 +58,25 @@ services:
       retries: 20
       start_period: 5s
 
+  db-restore:
+    image: postgres:16
+    environment:
+      POSTGRES_DB: factor_platform
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-factorplatform_roadshow_password}
+      PGPASSWORD: ${POSTGRES_PASSWORD:-factorplatform_roadshow_password}
+      PGHOST: postgres
+      FACTOR_PLATFORM_ROADSHOW_SEED_DUMP: /db_dumps/roadshow_demo.dump
+    volumes:
+      - ./data/db_dumps:/db_dumps:ro
+      - ./scripts:/scripts:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+    command: ["sh", "/scripts/roadshow_db_restore.sh"]
+    restart: "no"
+
   backend:
-    profiles: ["real-data"]
     image: factorplatform-roadshow-backend:latest
     build:
       context: .
@@ -56,9 +87,11 @@ services:
       - "${BACKEND_PORT:-8002}:8000"
     volumes:
       - ./data:/app/data
-      - ${FACTOR_PLATFORM_HOST_MCQLIB_DATA:-./demo/empty}:/data/mcqlib:ro
-      - ${FACTOR_PLATFORM_HOST_KAGGLE_DATA:-./demo/empty}:/data/kaggle:ro
+      - ${FACTOR_PLATFORM_HOST_MCQLIB_DATA:-./data/portable/mcqlib}:/data/mcqlib:ro
+      - ${FACTOR_PLATFORM_HOST_KAGGLE_DATA:-./data/portable/kaggle}:/data/kaggle:ro
     depends_on:
+      db-restore:
+        condition: service_completed_successfully
       postgres:
         condition: service_healthy
       redis:
@@ -72,7 +105,6 @@ services:
       start_period: 30s
 
   worker:
-    profiles: ["real-data"]
     image: factorplatform-roadshow-backend:latest
     build:
       context: .
@@ -82,8 +114,8 @@ services:
       <<: *roadshow-backend-env
     volumes:
       - ./data:/app/data
-      - ${FACTOR_PLATFORM_HOST_MCQLIB_DATA:-./demo/empty}:/data/mcqlib:ro
-      - ${FACTOR_PLATFORM_HOST_KAGGLE_DATA:-./demo/empty}:/data/kaggle:ro
+      - ${FACTOR_PLATFORM_HOST_MCQLIB_DATA:-./data/portable/mcqlib}:/data/mcqlib:ro
+      - ${FACTOR_PLATFORM_HOST_KAGGLE_DATA:-./data/portable/kaggle}:/data/kaggle:ro
     depends_on:
       backend:
         condition: service_healthy
@@ -99,24 +131,27 @@ services:
       context: .
       dockerfile: Dockerfile.frontend
       args:
-        NEXT_PUBLIC_API_KEY: ${NEXT_PUBLIC_API_KEY:-ROADSHOW_VIEW_KEY}
+        NEXT_PUBLIC_API_KEY: ${NEXT_PUBLIC_API_KEY:-ROADSHOW_ADMIN_KEY}
         NEXT_PUBLIC_ALLOW_MOCK_FALLBACK: "1"
-        NEXT_PUBLIC_DEMO_READONLY: ${NEXT_PUBLIC_DEMO_READONLY:-1}
-        NEXT_PUBLIC_MOCK_BACKEND: ${NEXT_PUBLIC_MOCK_BACKEND:-1}
+        NEXT_PUBLIC_DEMO_READONLY: ${NEXT_PUBLIC_DEMO_READONLY:-0}
+        NEXT_PUBLIC_MOCK_BACKEND: "0"
         NEXT_PUBLIC_API_BASE_PATH: /backend
     environment:
       BACKEND_ORIGIN: http://backend:8000
-      FACTOR_PLATFORM_VIEW_KEY: ${NEXT_PUBLIC_API_KEY:-ROADSHOW_VIEW_KEY}
+      FACTOR_PLATFORM_VIEW_KEY: ${NEXT_PUBLIC_API_KEY:-ROADSHOW_ADMIN_KEY}
       FACTOR_PLATFORM_ALLOW_MOCK_FALLBACK: "1"
-      FACTOR_PLATFORM_DEMO_READONLY: ${FACTOR_PLATFORM_DEMO_READONLY:-1}
-      FACTOR_PLATFORM_MOCK_BACKEND: ${FACTOR_PLATFORM_MOCK_BACKEND:-1}
-      NEXT_PUBLIC_API_KEY: ${NEXT_PUBLIC_API_KEY:-ROADSHOW_VIEW_KEY}
+      FACTOR_PLATFORM_DEMO_READONLY: ${FACTOR_PLATFORM_DEMO_READONLY:-0}
+      FACTOR_PLATFORM_MOCK_BACKEND: "0"
+      NEXT_PUBLIC_API_KEY: ${NEXT_PUBLIC_API_KEY:-ROADSHOW_ADMIN_KEY}
       NEXT_PUBLIC_ALLOW_MOCK_FALLBACK: "1"
-      NEXT_PUBLIC_DEMO_READONLY: ${NEXT_PUBLIC_DEMO_READONLY:-1}
-      NEXT_PUBLIC_MOCK_BACKEND: ${NEXT_PUBLIC_MOCK_BACKEND:-1}
+      NEXT_PUBLIC_DEMO_READONLY: ${NEXT_PUBLIC_DEMO_READONLY:-0}
+      NEXT_PUBLIC_MOCK_BACKEND: "0"
       NEXT_PUBLIC_API_BASE_PATH: /backend
     ports:
       - "${FRONTEND_PORT:-3000}:3000"
+    depends_on:
+      backend:
+        condition: service_healthy
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/dashboard').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]

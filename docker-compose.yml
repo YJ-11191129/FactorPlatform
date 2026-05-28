@@ -4,10 +4,24 @@ x-backend-env: &backend-env
   FACTOR_PLATFORM_ENV: ${FACTOR_PLATFORM_ENV:-dev}
   FACTOR_PLATFORM_REQUIRE_DB: "1"
   FACTOR_PLATFORM_REQUIRE_AUTH: "1"
+  FACTOR_PLATFORM_STALE_DATA_BLOCKS: ${FACTOR_PLATFORM_STALE_DATA_BLOCKS:-1}
+  FACTOR_PLATFORM_MARKET_DATA_BACKEND: ${FACTOR_PLATFORM_MARKET_DATA_BACKEND:-files}
+  FACTOR_PLATFORM_ARTIFACT_ROOT: /app/data/artifacts
+  FACTOR_PLATFORM_RUNS_DIR: /app/data/artifacts/factor_runs
+  FACTOR_PLATFORM_BACKTEST_DIR: /app/data/artifacts/backtests
+  FACTOR_PLATFORM_DATA_MAINTENANCE_DIR: /app/data/artifacts/data_maintenance
+  FACTOR_PLATFORM_QLIB_RESEARCH_DIR: /app/data/artifacts/qlib_research
+  FACTOR_PLATFORM_RESEARCH_QUALITY_DIR: /app/data/artifacts/research_quality
+  FACTOR_PLATFORM_OPENBB_DIR: /app/data/artifacts/openbb
   FACTOR_PLATFORM_API_KEYS: ${FACTOR_PLATFORM_API_KEYS:-LOCAL_ADMIN_KEY:admin,LOCAL_VIEW_KEY:viewer}
   FACTOR_PLATFORM_PROVIDER_URI: /data/mcqlib/qlib_bin/cn_data
   FACTOR_PLATFORM_US_PROVIDER_URI: /data/mcqlib/qlib_bin/us_data
+  FACTOR_PLATFORM_WIND_DATA_ROOT: /data/kaggle/wind_data
+  FACTOR_PLATFORM_PROCESSED_DATA_ROOT: /data/kaggle/processed
   FACTOR_PLATFORM_REAL_OHLCV_PATH: /data/kaggle/wind_data/02_daily_stock/stock_daily_ohlcv.parquet
+  FACTOR_PLATFORM_FINANCIAL_STATEMENT_PATH: /data/kaggle/processed/financial_statement.parquet
+  FACTOR_PLATFORM_TRADABLE_FLAGS_PATH: /data/kaggle/wind_data/01_master/tradable_flags.parquet
+  FACTOR_PLATFORM_UNIVERSE_PATH: /data/kaggle/wind_data/01_master/a_share_universe.parquet
 
 services:
   postgres:
@@ -51,8 +65,8 @@ services:
       - "${BACKEND_PORT:-8002}:8000"
     volumes:
       - ./data:/app/data
-      - ${FACTOR_PLATFORM_HOST_MCQLIB_DATA:-./demo/empty}:/data/mcqlib:ro
-      - ${FACTOR_PLATFORM_HOST_KAGGLE_DATA:-./demo/empty}:/data/kaggle:ro
+      - ${FACTOR_PLATFORM_HOST_MCQLIB_DATA:-./data/portable/mcqlib}:/data/mcqlib:ro
+      - ${FACTOR_PLATFORM_HOST_KAGGLE_DATA:-./data/portable/kaggle}:/data/kaggle:ro
     depends_on:
       postgres:
         condition: service_healthy
@@ -76,8 +90,8 @@ services:
       <<: *backend-env
     volumes:
       - ./data:/app/data
-      - ${FACTOR_PLATFORM_HOST_MCQLIB_DATA:-./demo/empty}:/data/mcqlib:ro
-      - ${FACTOR_PLATFORM_HOST_KAGGLE_DATA:-./demo/empty}:/data/kaggle:ro
+      - ${FACTOR_PLATFORM_HOST_MCQLIB_DATA:-./data/portable/mcqlib}:/data/mcqlib:ro
+      - ${FACTOR_PLATFORM_HOST_KAGGLE_DATA:-./data/portable/kaggle}:/data/kaggle:ro
     depends_on:
       backend:
         condition: service_healthy

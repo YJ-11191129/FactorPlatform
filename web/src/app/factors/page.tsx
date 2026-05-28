@@ -12,6 +12,7 @@ import { PageContainer } from "@/components/layout/PageContainer";
 import { FactorFilterBar, type FactorFilters } from "@/components/factor/FactorFilterBar";
 import { FactorRunModal, type RunMode } from "@/components/factor/FactorRunModal";
 import { FactorTable } from "@/components/factor/FactorTable";
+import { useAdvancedMode } from "@/lib/advanced-mode";
 import { listFactors, runDemo, runQlib } from "@/lib/api/factors";
 import { generateQlibReport, getQlibStatus, listQlibFactorMiningRuns, runQlibFactorMining } from "@/lib/api/qlib-research";
 import { evaluateResearchQuality, getResearchQualityRun } from "@/lib/api/research-quality";
@@ -48,6 +49,7 @@ function explainApiError(e: any): string {
 }
 
 export default function FactorsPage() {
+  const [advancedMode] = useAdvancedMode();
   const [state, setState] = useState<LoadState>("loading");
   const [data, setData] = useState<FactorItem[]>([]);
   const [filters, setFilters] = useState<FactorFilters>({});
@@ -126,17 +128,17 @@ export default function FactorsPage() {
     try {
       if (runMode === "demo") {
         const res = await runDemo({ factor_name: runFactor, params: { n: values.n }, save: values.save });
-        message.success(res.calc_batch_id ? `Saved: ${res.calc_batch_id}` : "Run submitted");
+        message.success(res.calc_batch_id ? (advancedMode ? `Saved: ${res.calc_batch_id}` : "Result artifact saved") : "Run submitted");
       } else {
         const res = await runQlib({
           factor_name: runFactor,
           params: { n: values.n },
-          provider_uri: "D:\\mcQlib\\data\\qlib_bin\\cn_data",
+          provider_uri: qlibStatus?.provider_uri || "D:\\mcQlib\\data\\qlib_bin\\cn_data",
           universe: values.universe,
           instrument_limit: values.instrument_limit,
           save: values.save,
         });
-        message.success(res.calc_batch_id ? `Saved: ${res.calc_batch_id}` : "Run submitted");
+        message.success(res.calc_batch_id ? (advancedMode ? `Saved: ${res.calc_batch_id}` : "Result artifact saved") : "Run submitted");
       }
       setRunOpen(false);
     } catch (e: any) {
@@ -160,7 +162,7 @@ export default function FactorsPage() {
         freq: "day",
         factor_limit: values.factor_limit ? Number(values.factor_limit) : null,
       });
-      message.success(`Mining run created: ${res.run_id}`);
+      message.success(advancedMode ? `Mining run created: ${res.run_id}` : "Mining run created");
       setMiningOpen(false);
       setMiningRuns(await listQlibFactorMiningRuns(20));
     } catch (e: any) {
@@ -174,7 +176,7 @@ export default function FactorsPage() {
     setReportLoadingId(runId);
     try {
       const res = await generateQlibReport({ report_type: "qlib_factor_mining", run_id: runId });
-      message.success(`Report generated: ${String(res.html_path || "")}`);
+      message.success(advancedMode ? `Report generated: ${String(res.html_path || "")}` : "Report generated");
     } catch (e: any) {
       message.error(explainApiError(e));
     } finally {
@@ -215,10 +217,10 @@ export default function FactorsPage() {
 
   const miningColumns: ColumnsType<QlibFactorMiningRun> = [
     {
-      title: "Run",
+      title: advancedMode ? "Run" : "Research run",
       dataIndex: "run_id",
       key: "run_id",
-      render: (v: string) => <Typography.Text code>{v}</Typography.Text>,
+      render: (v: string, _record, index) => (advancedMode ? <Typography.Text code>{v}</Typography.Text> : <Typography.Text>Run {index + 1}</Typography.Text>),
     },
     {
       title: "Status",
@@ -300,12 +302,12 @@ export default function FactorsPage() {
   return (
     <PageContainer
       title="Factors"
-      subtitle="Manage factors, native qlib mining, and research quality gates"
+      subtitle={advancedMode ? "Manage factors, native qlib mining, and research quality gates" : "Manage factor research, screening, and quality review"}
       extra={
         <Space>
           <Button disabled>New Factor</Button>
           <Button type="primary" disabled={!qlibReady} title={!qlibReady ? qlibDisabledReason : undefined} onClick={() => setMiningOpen(true)}>
-            Batch Mine qlib Factors
+            {advancedMode ? "Batch Mine qlib Factors" : "Batch Research Factors"}
           </Button>
         </Space>
       }
@@ -339,7 +341,7 @@ export default function FactorsPage() {
       ) : (
         <>
           <SectionCard
-            title="Native qlib readiness"
+            title={advancedMode ? "Native qlib readiness" : "Market data readiness"}
             extra={<Tag color={qlibReady ? "green" : qlibStatus?.status === "DATA_NOT_READY" ? "gold" : qlibError ? "gold" : "red"}>{qlibStatus?.status || (qlibError ? "UNAVAILABLE" : "UNKNOWN")}</Tag>}
           >
             <Alert
@@ -348,7 +350,7 @@ export default function FactorsPage() {
               message={qlibReady ? "Native qlib is ready" : "Batch mining is blocked until native qlib is ready"}
               description={
                 <div>
-                  <div>Provider: {qlibStatus?.provider_uri || "D:\\mcQlib\\data\\qlib_bin\\cn_data"}</div>
+                  {advancedMode ? <div>Provider: {qlibStatus?.provider_uri || "D:\\mcQlib\\data\\qlib_bin\\cn_data"}</div> : <div>Market data is managed by the backend data layer.</div>}
                   <div>{qlibDisabledReason}</div>
                   {!qlibReady ? <div>Factor registry remains available; only qlib mining and qlib factor runs are disabled.</div> : null}
                 </div>
@@ -378,7 +380,7 @@ export default function FactorsPage() {
             />
           </SectionCard>
 
-          <SectionCard title="Native qlib factor mining runs" extra={<Tag color="blue">{miningRuns.length}</Tag>}>
+          <SectionCard title={advancedMode ? "Native qlib factor mining runs" : "Factor research runs"} extra={<Tag color="blue">{miningRuns.length}</Tag>}>
             {miningRunsError ? (
               <Alert
                 showIcon
@@ -393,7 +395,7 @@ export default function FactorsPage() {
 
           <FactorRunModal open={runOpen} mode={runMode} factorName={runFactor} loading={runLoading} onCancel={() => setRunOpen(false)} onSubmit={submitRun} />
 
-          <Modal title="Batch Mine qlib Factors" open={miningOpen} onCancel={() => setMiningOpen(false)} footer={null} destroyOnClose>
+          <Modal title={advancedMode ? "Batch Mine qlib Factors" : "Batch Research Factors"} open={miningOpen} onCancel={() => setMiningOpen(false)} footer={null} destroyOnClose>
             <Form
               layout="vertical"
               initialValues={{
@@ -408,9 +410,11 @@ export default function FactorsPage() {
               }}
               onFinish={submitMining}
             >
-              <Form.Item label="Provider URI" name="provider_uri">
-                <Input />
-              </Form.Item>
+              {advancedMode ? (
+                <Form.Item label="Provider URI" name="provider_uri">
+                  <Input />
+                </Form.Item>
+              ) : null}
               <Space style={{ width: "100%" }} align="start">
                 <Form.Item label="Universe" name="universe" rules={[{ required: true }]} style={{ flex: 1 }}>
                   <Input />
@@ -449,7 +453,7 @@ export default function FactorsPage() {
           <Drawer
             open={qualityOpen}
             width={860}
-            title={`Research Quality - ${qualityRunId}`}
+            title={advancedMode ? `Research Quality - ${qualityRunId}` : "Research Quality"}
             onClose={() => setQualityOpen(false)}
             extra={
               <Button loading={qualityLoading} onClick={() => runQualityEvaluation(qualityRunId)}>
